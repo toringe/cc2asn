@@ -1,4 +1,9 @@
 cc2asn
 ======
 
-CC2ASN - Country lookup service
+Country lookup service
+
+Requirements
+============
+
+sudo apt-get install python-naturalsort
