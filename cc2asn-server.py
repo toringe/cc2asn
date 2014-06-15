@@ -23,6 +23,7 @@ import re
 import sys
 import pwd
 import grp
+import errno
 import signal
 import argparse
 import datetime
@@ -40,7 +41,19 @@ class RequestHandler(SocketServer.BaseRequestHandler):
     def handle(self):
 
         # Receive 8 bytes of data, and convert to uppercase
-        sockdata = self.request.recv(8).strip().upper()
+        try:
+            sockdata = self.request.recv(8)
+        except IOError as e:
+            if e.errno == errno.ECONNRESET:
+                self.server.logger.warning('Connection reset by client')
+                return
+            else:
+                raise
+        if sockdata is not None:
+            sockdata = sockdata.strip().upper()
+        else:
+            self.server.logger.warning('No client data received')
+            return
 
         # Client IP
         client = self.client_address[0]
@@ -68,12 +81,24 @@ class RequestHandler(SocketServer.BaseRequestHandler):
         if os.path.isfile(datapath) and os.access(datapath, os.R_OK):
             with open(datapath, 'r') as data:
                 self.request.send(data.read())
-                self.server.logger.info('Query: ' + client + ' ' + rectype +
-                                        ' ' + cc)
+                self.logclient(client, rectype, cc)
         else:
             self.server.logger.warning('Client ' + client +
                                        ' queried for missing file: '+datapath)
         return
+
+    # Log client requests
+    def logclient(self, ip, rectype, cc):
+        if self.server.clientlog is None:
+            # Use syslog
+            self.server.logger.info('Query: ' + ip + ' ' + rectype + ' ' + cc)
+        else:
+            # Use custom log
+            now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log = open(self.server.clientlog, 'a')
+            log.write('{} {} {} {}\n'.format(now, ip, rectype, cc))
+            log.close()
+# End class
 
 
 # Change execution UID and GID
@@ -135,8 +160,10 @@ def daemonize():
 def parse_input():
     parser = argparse.ArgumentParser(description='CC2ASN Server')
     parser.add_argument('-c', dest='confpath', help='Path to config file')
-    parser.add_argument('-D', dest='daemon', action='store_true',
+    parser.add_argument('-d', dest='daemon', action='store_true',
                         help='Daemonize server')
+    parser.add_argument('-l', dest='clientlog',
+                        help='Log client requests to custom file')
     parser.add_argument('-V', action='version', version='CC2ASN Server v.1')
     args = parser.parse_known_args()[0]
 
@@ -219,7 +246,8 @@ if __name__ == '__main__':
         logger.critical(errmsg)
         exit(errmsg)
 
-    # Share local config and syslogger with server
+    # Share variables with server
+    server.clientlog = args.clientlog
     server.config = config
     server.logger = logger
 
@@ -235,6 +263,23 @@ if __name__ == '__main__':
     else:
         logger.info('Server running in foreground (pid {})'
                     .format(os.getpid()))
+
+    # If custom log is set, create it if not exists
+    if args.clientlog is not None:
+        if os.path.isfile(args.clientlog) is False:
+            try:
+                f = open(args.clientlog, 'r+')
+                f.close()
+                logger.info('Client log: {}'.format(args.clientlog))
+            except IOError as e:
+                errmsg = 'Unable to create file: {}'.format(args.clientlog)
+                logger.critical(errmsg)
+                exit(errmsg)
+        else:
+            if os.access(args.clientlog, os.W_OK) is False:
+                errmsg = 'Unable to write to file: {}'.format(args.clientlog)
+                logger.critical(errmsg)
+                exit(errmsg)
 
     # Create an event for the shutdown process to set
     shutdown_event = threading.Event()
