@@ -9,6 +9,8 @@ fi
 
 cp cc2asn.conf /etc/default/cc2asn
 
+cp cc2asn.upstart /etc/init/cc2asn.conf
+
 cp RIR-downloader.sh /usr/local/sbin/
 sed -i 's/cc2asn.conf/\/etc\/default\/cc2asn/' /usr/local/sbin/RIR-downloader.sh 
 
