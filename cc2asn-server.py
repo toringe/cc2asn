@@ -164,6 +164,7 @@ def parse_input():
                         help='Daemonize server')
     parser.add_argument('-l', dest='clientlog',
                         help='Log client requests to custom file')
+    parser.add_argument('-p', dest='pidfile', help='Path to PID file')
     parser.add_argument('-V', action='version', version='CC2ASN Server v.1')
     args = parser.parse_known_args()[0]
 
@@ -172,6 +173,56 @@ def parse_input():
         logger.info('No config file specified. Using {}'.format(args.confpath))
 
     return args
+
+
+# Create an empty file
+def touch(filename, desc):
+    if os.path.isfile(filename) is True:
+        return
+    else:
+        try:
+            f = open(filename, 'w+')
+            f.close()
+            logger.info('{}: {}'.format(desc, filename))
+        except IOError as e:
+            errmsg = e.strerror + ': ' + filename
+            logger.critical(errmsg)
+            exit(errmsg)
+
+
+# Create subdirectory for pid file.
+# This enables deletion after we drop privileges.
+def create_piddir(piddir, user, group):
+
+    # Create directory if needed
+    if os.path.exists(piddir) is False:
+        try:
+            os.mkdir(piddir)
+        except OSError as e:
+            logger.error('Failed to create directory: {}'.format(piddir))
+
+    # Change owner
+    try:
+        uid = pwd.getpwnam(user).pw_uid
+        gid = grp.getgrnam(group).gr_gid
+        os.chown(piddir, uid, gid)
+    except OSError as e:
+        logger.error('Failed to chown {}'.format(piddir))
+
+
+# Create PID file and check/set permissions
+def create_pidfile(pidfile, pid):
+
+    if os.path.isfile(pidfile) is False:
+        try:
+            f = open(pidfile, 'w+')
+            f.write(str(pid))
+            f.close()
+            logger.info('PID file created: {}'.format(pidfile))
+        except IOError as e:
+            logger.error('Failed to create pid file: {}'.format(pidfile))
+    else:
+        logger.warning('PID file already exists. Stale file?')
 
 
 # Create signal handlers for the usual interrupts
@@ -192,11 +243,24 @@ def cleanup(signal, frame):
 # Proper shutdown of socketserver
 def shutdown_handler(event):
     logger.info('Shutting down server')
+
+    # Cleanly shutdown server
     try:
         server.shutdown()
         logger.info('Successful shutdown')
-    except:
-        logger.warning('Failed to cleanly shutdown server')
+    except Exception as e:
+        logger.error('Failed: {}'.format(e.strerror))
+
+    # Remove pid file
+    try:
+        # was config.get(pidfile)
+        pidfile = args.pidfile
+        logger.info('Removing PID file: {}'.format(pidfile))
+        os.remove(pidfile)
+    except OSError as e:
+        logger.warning('Failed to remove PID file. {}'.format(e.strerror))
+
+    # Tell thread that shutdown event is complete
     event.set()
     return
 
@@ -212,13 +276,13 @@ if __name__ == '__main__':
     syslog.setFormatter(formatter)
     logger.addHandler(syslog)
 
+    # Handle user input
+    args = parse_input()
+
     # Create signal name lookup
     signalname = dict((k, v) for v, k in
                       signal.__dict__.iteritems() if v.startswith('SIG'))
     signal_handling()
-
-    # Handle user input
-    args = parse_input()
 
     # Load configuration
     if os.access(args.confpath, os.R_OK):
@@ -252,14 +316,30 @@ if __name__ == '__main__':
     server.logger = logger
 
     if args.daemon is True:
-        # Drop root privileges
+
+        # Get settings from config
         user = config.get('RUNUSER')
         group = config.get('RUNGROUP')
+
+        # Set default pid file if not specified
+        if args.pidfile is None:
+            args.pidfile = '/var/run/cc2asn/cc2asn-server.pid'
+
+        # Create subdirectory for pid file
+        create_piddir(os.path.dirname(args.pidfile), user, group)
+
+        # Drop root privileges
         drop_privileges(user, group)
         logger.info('Privileges dropped to {}:{}'.format(user, group))
+
         # Daemonize
         daemonize()
-        logger.info('Daemonized (pid {})'.format(os.getpid()))
+        pid = os.getpid()
+        logger.info('Daemonized (pid {})'.format(pid))
+
+        # Create PID file
+        create_pidfile(args.pidfile, pid)
+
     else:
         logger.info('Server running in foreground (pid {})'
                     .format(os.getpid()))
@@ -267,14 +347,7 @@ if __name__ == '__main__':
     # If custom log is set, create it if not exists
     if args.clientlog is not None:
         if os.path.isfile(args.clientlog) is False:
-            try:
-                f = open(args.clientlog, 'r+')
-                f.close()
-                logger.info('Client log: {}'.format(args.clientlog))
-            except IOError as e:
-                errmsg = 'Unable to create file: {}'.format(args.clientlog)
-                logger.critical(errmsg)
-                exit(errmsg)
+            touch(args.clientlog, 'Client log')
         else:
             if os.access(args.clientlog, os.W_OK) is False:
                 errmsg = 'Unable to write to file: {}'.format(args.clientlog)
