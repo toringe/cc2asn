@@ -1,0 +1,17 @@
+#!upstart
+
+description "Upstart script for the CC2ASN server"
+
+env PIDFILE="/var/run/cc2asn/cc2asn-server.pid"
+env CONFIG="/etc/default/cc2asn"
+env SERVER="/usr/local/sbin/cc2asn-server.py"
+
+start on startup
+stop on shutdown
+
+respawn
+respawn limit 10 5
+
+expect daemon
+
+exec start-stop-daemon --start --pidfile $PIDFILE --exec $SERVER -- -c $CONFIG -p $PIDFILE -d
