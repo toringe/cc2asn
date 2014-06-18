@@ -44,5 +44,7 @@ Troubleshooting
 
 Check your local syslog file for any problems with the CC2ASN service. Any log entries marked with `WARNING`, `ERROR` or `CRITICAL` should be dealt with.
 
+    zgrep -iE "CC2ASN: <WARNING|error|critical>" /var/log/syslog*
+
 [1]: http://www.cc2asn.com
                                               
