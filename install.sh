@@ -24,6 +24,8 @@ if [ -e $DEST ]; then
             cp cc2asn.conf $DEST
         fi
     fi
+else
+    cp cc2asn.conf $DEST
 fi
 
 # Install Upstart configuration
@@ -44,6 +46,9 @@ if [ -e $DEST ]; then
             initctl reload-configuration
         fi
     fi
+else
+    cp cc2asn.upstart /etc/init/cc2asn.conf
+    initctl reload-configuration
 fi
 
 # Install downloader and update config path
