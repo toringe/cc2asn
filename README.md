@@ -8,7 +8,7 @@ A simple lookup service for AS-numbers and prefixes belonging to any given count
 System prerequisites
 --------------------
 
-    sudo apt-get install python-naturalsort python-configobj unzip
+    sudo apt-get install python-naturalsort python-configobj unzip rsyslog
 
 Installation
 ------------
