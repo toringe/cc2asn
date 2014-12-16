@@ -8,14 +8,13 @@ A simple lookup service for AS-numbers and prefixes belonging to any given count
 System prerequisites
 --------------------
 
-    sudo apt-get install python-naturalsort python-configobj unzip rsyslog
+    sudo apt-get install python-naturalsort python-configobj rsyslog
 
 Installation
 ------------
 
-    wget https://github.com/toringe/cc2asn/archive/master.zip
-    unzip master.zip
-    cd cc2asn-master
+    curl -L https://github.com/toringe/cc2asn/tarball/master | tar zx
+    cd *cc2asn*
     sudo ./install.sh
 
 Initializing with data
