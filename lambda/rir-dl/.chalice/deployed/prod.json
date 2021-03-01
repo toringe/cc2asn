@@ -1,0 +1,29 @@
+{
+  "resources": [
+    {
+      "name": "dispatcher",
+      "resource_type": "lambda_function",
+      "lambda_arn": "arn:aws:lambda:eu-west-1:719411478741:function:cc2asn-rir-dl-prod-dispatcher"
+    },
+    {
+      "name": "dispatcher-event",
+      "resource_type": "cloudwatch_event",
+      "rule_name": "cc2asn-rir-dl-prod-dispatcher-event"
+    },
+    {
+      "name": "worker",
+      "resource_type": "lambda_function",
+      "lambda_arn": "arn:aws:lambda:eu-west-1:719411478741:function:cc2asn-rir-dl-prod-worker"
+    },
+    {
+      "name": "worker-sns-subscription",
+      "resource_type": "sns_event",
+      "topic": "cc2asn-rir-dl-prod",
+      "lambda_arn": "arn:aws:lambda:eu-west-1:719411478741:function:cc2asn-rir-dl-prod-worker",
+      "subscription_arn": "arn:aws:sns:eu-west-1:719411478741:cc2asn-rir-dl-prod:9935f27c-c90c-4773-a4ec-17ce77af3981",
+      "topic_arn": "arn:aws:sns:eu-west-1:719411478741:cc2asn-rir-dl-prod"
+    }
+  ],
+  "schema_version": "2.0",
+  "backend": "api"
+}

@@ -1,0 +1,28 @@
+{
+  "version": "2.0",
+  "app_name": "cc2asn-sef-parser",
+  "tags": {
+    "Project": "cc2asn"
+  },
+  "environment_variables": {
+      "BUCKETDF": "cc2asn-data",
+      "BUCKETDB": "cc2asn-db",
+      "REGION": "eu-west-1",
+  },
+  "manage_iam_role": false,
+  "iam_role_arn": "arn:aws:iam::719411478741:role/CC2ASN-Lambda-Execution",
+  "stages": {
+    "dev": {
+      "environment_variables": {
+        "LOGLEVEL": "debug",
+        "STAGE": "dev"
+      }
+    },
+    "prod": {
+      "environment_variables": {
+        "LOGLEVEL": "warning",
+        "STAGE": "prod"
+      }
+    }
+  }
+}
