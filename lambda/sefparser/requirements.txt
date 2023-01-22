@@ -1,0 +1,2 @@
+logzero==1.6.3
+natsort==7.1.1

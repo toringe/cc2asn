@@ -5,9 +5,9 @@
     "Project": "cc2asn"
   },
   "environment_variables": {
-      "BUCKETDF": "cc2asn-data",
-      "BUCKETDB": "cc2asn-db",
-      "REGION": "eu-west-1",
+    "BUCKETDF": "cc2asn-data",
+    "BUCKETDB": "cc2asn-db",
+    "REGION": "eu-west-1"
   },
   "manage_iam_role": false,
   "iam_role_arn": "arn:aws:iam::719411478741:role/CC2ASN-Lambda-Execution",
@@ -15,13 +15,15 @@
     "dev": {
       "environment_variables": {
         "LOGLEVEL": "debug",
-        "STAGE": "dev"
+        "STAGE": "dev",
+        "SEFSNS": "arn:aws:sns:eu-west-1:719411478741:cc2asn-sef-file-dev"
       }
     },
     "prod": {
       "environment_variables": {
         "LOGLEVEL": "warning",
-        "STAGE": "prod"
+        "STAGE": "prod",
+        "SEFSNS": "arn:aws:sns:eu-west-1:719411478741:cc2asn-sef-file-prod"
       }
     }
   }

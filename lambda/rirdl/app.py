@@ -41,7 +41,7 @@ RIRDF = {
 
 # Publish SNS message (message should be a dict)
 def publish_sns(message, arn):
-    logger.debug(f"SNS Message: {message}")
+    logger.debug(f"Publish SNS message: {message}")
     response = sns.publish(
         TargetArn=arn,
         Message=json.dumps({"default": json.dumps(message)}),
@@ -110,19 +110,21 @@ def cleanup(tmpdir):
         logger.exception(e)
 
 
-# Scheduled Lambda function to spawn off a separate Lambda for each RIR
+# Scheduled Lambda function to dispatch separate Lambdas for each RIR download
 @app.schedule(Cron(0, 3, "*", "*", "?", "*"))
-def dispatcher(event, context):
-    snsarn = os.getenv("RIRSNS")
+def dispatcher(event):
+    rirsns = os.getenv("RIRSNS")
     for rir, url in RIRDF.items():
         message = {"rir_name": rir, "rir_url": url}
-        if not publish_sns(message, snsarn):
-            logger.error(f"Failed to publish to SNS (snsarn)")
+        if not publish_sns(message, rirsns):
+            logger.error(f"Failed to publish to SNS ({rirsns})")
             return {"Status": "Failed"}
+        logger.debug(f"{message} => {rirsns}")
     return {"Status": "OK"}
 
 
 # Lambda function to download and store latest delegation file from a RIR
+# If successful, the worker will notify the SEF Parser Lambda function.
 @app.on_sns_message(topic=f"cc2asn-rir-dl-{stage}")
 def worker(event):
     logger.debug(f"SNS message: {event.message}")
@@ -135,6 +137,15 @@ def worker(event):
             logger.error("Error! Invalid checksum")
         else:
             dfname = msg["rir_url"].split("/")[-1]
-            save_to_s3(tmpfile, os.getenv("BUCKET"), f"{stage}/{dfname}")
+            if save_to_s3(tmpfile, os.getenv("BUCKET"), f"{stage}/{dfname}"):
+                sefsns = os.getenv("SEFSNS")
+                message = {
+                    "sef_file": f"{stage}/{dfname}",
+                    "bucket": os.getenv("BUCKET"),
+                }
+                if not publish_sns(message, sefsns):
+                    logger.error(f"Failed to publish to SNS ({sefsns})")
+                    return {"Status": "Failed"}
+                logger.debug(f"{message} => {sefsns}")
         cleanup(os.getenv("TMPDIR"))
     return
