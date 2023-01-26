@@ -1,8 +1,8 @@
 PROJECT = CC2ASN
 FUNCTION = $(PROJECT)-downloader
-REGION = eu-west-1
+REGION := $(shell pcregrep -o1 "^REGION = \"([a-z]{2}-[a-z]*-\d)\"" downloader.py)
 
-all: build
+all: build 
 
 .PHONY: clean build deploy
 
