@@ -1,15 +1,19 @@
+# Download and verify a RIR delegation file as specified in the event URL
+
 import os
 import re
 import json
 import time
-import boto3
 import shutil
 import hashlib
 import logging
+from contextlib import closing
 from urllib.request import urlopen
 from urllib.parse import urlparse, unquote
-from contextlib import closing
 
+import boto3
+
+# AWS configuration
 REGION = "eu-west-1"
 BUCKET = "cc2asn-data"
 
@@ -110,7 +114,7 @@ def handler(event, context):
                 logger.error("Error! Invalid checksum")
             else:
                 logger.info("Checksum OK")
-                s3path = save_to_s3(tmpfile, BUCKET, os.path.basename(tmpfile))
+                s3path = save_to_s3(tmpfile, BUCKET, f"{os.path.basename(tmpfile)}.sef")
                 if s3path is not None:
                     logger.info(f"Successfully stored on {s3path}")
                 else:
@@ -118,7 +122,4 @@ def handler(event, context):
             cleanup(tmpdir)
         else:
             logger.error("Failed to download delegation file")
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"message": f"Lambda execution done"}),
-    }
+    return
