@@ -36,22 +36,5 @@ endif
 
 all: downloader parser curator 
 
-#.PHONY: clean build deploy downloader parser curator
-
 clean:
 	rm -rf build
-
-#build: clean downloader parser curator
-#	@echo "in build"
-
-#deploy: build
-#	@echo "in deploy"
-
-#downloader:
-#	@echo "packaging downloader"
-
-#parser:
-#	@echo "packaging parser"
-
-#curator:
-#	@echo "packaging curator"
