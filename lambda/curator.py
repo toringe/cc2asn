@@ -7,8 +7,8 @@ import boto3
 import natsort
 
 # AWS configuration
-REGION = "eu-west-1"
-BUCKET = "cc2asn-db"
+REGION = "eu-west-1"  # AWS region name
+BUCKET = "cc2asn-db"  # S3 bucket for curated data
 
 #  Setup logging
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ def dbstore(ccdata):
     fc = 0
     # For each country in the dataset
     for cc in ccdata:
+        logger.debug(f"Processing country: {cc}")
         if not cc:
             continue
         files = {}
@@ -75,7 +76,6 @@ def dbstore(ccdata):
             if usedate:  # Have a valid generation date for the data
                 keydate = f"{yyyy}/{mm}/{dd}/{filename}"
                 try:
-                    logger.debug(f"Writing data to s3:{BUCKET}/{keydate}")
                     s3.Object(BUCKET, keydate).put(Body="\n".join(filedata))
                     fc += 1
                 except Exception as e:
@@ -84,7 +84,6 @@ def dbstore(ccdata):
 
             keylatest = f"latest/{filename}"
             try:
-                logger.debug(f"Writing data to s3:{BUCKET}/{keylatest}")
                 s3.Object(BUCKET, keylatest).put(Body="\n".join(filedata))
                 fc += 1
             except Exception as e:
@@ -102,14 +101,15 @@ def handler(event, context):
         logger.debug(f"Log level set by environment variable: {level}")
 
     # Process event
-    logger.debug(f"Received event:  {event}")
-    srcbucket = event["detail"]["bucket"]
-    srckey = event["detail"]["key"]
+    logger.debug(f"Received event: {event}")
+    srcbucket = event["detail"]["bucket"]["name"]
+    srckey = event["detail"]["object"]["key"]
+    rir = os.path.basename(srckey).split("-")[1].upper()
     logger.debug(f"Processing {srckey} from {srcbucket}")
 
     # Read parsed file and struture the data
     ccdata = json.loads(read_s3_file(srcbucket, srckey))
     fc = dbstore(ccdata)
-    logger.info(f"Curator created {fc} files")
+    logger.info(f"Created {fc} files for {len(ccdata)} countries in {rir} region")
 
     return

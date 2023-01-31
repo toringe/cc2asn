@@ -2,7 +2,6 @@
 # https://ftp.ripe.net/pub/stats/ripencc/RIR-Statistics-Exchange-Format.txt
 
 import os
-import sys
 import json
 import math
 import logging
@@ -11,8 +10,8 @@ import collections
 import boto3
 
 # AWS configuration
-REGION = "eu-west-1"
-BUCKET = "cc2asn-db"
+REGION = "eu-west-1"  # AWS region name
+PREFIX = "parsed"  # Folder to store parsed files. Bucket is defined in event
 
 #  Setup logging
 logger = logging.getLogger(__name__)
@@ -87,7 +86,7 @@ def parser(sefdata):
         start = str(elements[3])
         value = int(elements[4])
 
-        # Process prefixes and ASNs
+        # Process IP and ASNs records
         record = ""
         if iptype == "IPV4" or iptype == "IPV6":
             if ":" not in start:
@@ -137,22 +136,7 @@ def handler(event, context):
 
     # Parse and store SEF data
     ccdata = parser(read_s3_file(srcbucket, srckey))
-    write_s3_file(srcbucket, f"parsed/{srckey}.json", json.dumps(ccdata))
+    parsedfile = f"{PREFIX}/{os.path.basename(srckey)}.json"
+    write_s3_file(srcbucket, parsedfile, json.dumps(ccdata))
 
-    # Create an event on EventBridge
-    evbr = boto3.client("events")
-    entries = [
-        {
-            "Source": "CC2ASN-Parser",
-            "DetailType": "CC2ASN-SEF-Data",
-            "Detail": json.dumps({"bucket": srcbucket, "key": f"parsed/{srckey}.json"}),
-            "EventBusName": "default",
-        },
-    ]
-    response = evbr.put_events(Entries=entries)
-    if response["FailedEntryCount"] > 0:
-        logger.error(f"Failed to send event to EventBridge: {response}")
-    else:
-        logger.info(f"Successfully sent event to EventBridge: {entries}")
-
-    return {"result": f"Execution complete"}
+    return

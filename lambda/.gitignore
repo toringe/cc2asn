@@ -1,0 +1,4 @@
+build/*
+*.bkp
+__pycache__
+.DS_Store/*

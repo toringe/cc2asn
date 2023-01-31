@@ -14,8 +14,9 @@ from urllib.parse import urlparse, unquote
 import boto3
 
 # AWS configuration
-REGION = "eu-west-1"
-BUCKET = "cc2asn-data"
+REGION = "eu-west-1"  # AWS region name
+BUCKET = "cc2asn-data"  # S3 bucket name
+PREFIX = "RIR-SEF"  # Folder in bucket
 
 #  Setup logging
 logger = logging.getLogger(__name__)
@@ -114,7 +115,9 @@ def handler(event, context):
                 logger.error("Error! Invalid checksum")
             else:
                 logger.info("Checksum OK")
-                s3path = save_to_s3(tmpfile, BUCKET, f"{os.path.basename(tmpfile)}.sef")
+                s3path = save_to_s3(
+                    tmpfile, BUCKET, f"{PREFIX}/{os.path.basename(tmpfile)}"
+                )
                 if s3path is not None:
                     logger.info(f"Successfully stored on {s3path}")
                 else:
