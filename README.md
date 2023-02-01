@@ -13,6 +13,9 @@ check out the website at [www.cc2asn.com][1].
 This is the redesigned event driven architecure for CC2ASN. If you are looking
 for the legacy server based version, then go ![here](legacy/README.md)
 
+> **Note**
+> This is a note
+
 Architecture
 ------------
 ![Architecture Diagram](misc/architecture.png)
