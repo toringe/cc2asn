@@ -15,8 +15,8 @@ for the legacy server based version, then go [here](legacy/README.md)
 
 Architecture
 ------------
-![Architecture Diagram](misc/architecture.png)
-
+![Architecture Diagram](misc/CC2ASN-Arch-Dark.png#gh-dark-mode-only)
+![Architecture Diagram](misc/CC2ASN-Arch-Light.png#gh-light-mode-only)
 
 [1]: http://www.cc2asn.com
                                               
