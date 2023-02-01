@@ -1,5 +1,4 @@
 PROJECT = CC2ASN
-#FUNCTION := $(PROJECT)-curator
 
 $(eval deploy:;@:)
 
