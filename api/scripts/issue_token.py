@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import datetime
+import os
 import secrets
 import sys
 from pathlib import Path
@@ -35,7 +36,8 @@ def _parse_args(argv):
 
 
 def _table():
-    return boto3.resource("dynamodb").Table(TABLE)
+    name = os.environ.get("CC2ASN_TOKENS_TABLE", TABLE)
+    return boto3.resource("dynamodb").Table(name)
 
 
 def _create(args, table) -> int:

@@ -39,9 +39,11 @@ class StubTokens:
 class ForgivingLimiter:
     def __init__(self):
         self.calls = 0
+        self.last_ip = None
 
     def allow(self, ip, today):
         self.calls += 1
+        self.last_ip = ip
         return self.calls <= 100
 
 
@@ -171,6 +173,28 @@ class TestServerRouting(ServerFixture):
         self.assertEqual(status, 429)
         self.assertEqual(body, "Rate limit exceeded\n")
         self.assertEqual(headers.get("Retry-After"), "60")
+
+    def test_rate_limit_uses_forwarded_ip(self):
+        deps = good_deps()
+        self.get(deps, "/NO", headers={"X-Forwarded-For": "8.8.8.8, 10.0.0.1"})
+        self.assertEqual(deps.limiter.last_ip, "8.8.8.8")
+        self.get(deps, "/NO")
+        self.assertNotEqual(deps.limiter.last_ip, None)
+
+    def test_internal_error_returns_500(self):
+        class BrokenStore:
+            def get_latest(self, rectype, cc):
+                raise RuntimeError("boom")
+
+        deps = Deps(
+            config=Config(),
+            store=BrokenStore(),
+            tokens=StubTokens(),
+            limiter=ForgivingLimiter(),
+        )
+        status, _, body = self.get(deps, "/NO")
+        self.assertEqual(status, 500)
+        self.assertEqual(body, "Internal error\n")
 
     def test_malformed_date_returns_404(self):
         for path in ("/2026-13-01/US", "/2020-01-02/UNKNOWN!", "/nation"):

@@ -20,6 +20,13 @@ class TestParseQuery(unittest.TestCase):
     def test_unknown_type_rejected(self):
         self.assertIsNone(parse_query("/IPV5/US"))
 
+    def test_three_segment_non_date_paths_rejected(self):
+        self.assertIsNone(parse_query("/IPV4/NO/US"))
+        self.assertIsNone(parse_query("/downloads/for/NO"))
+
+    def test_overlong_date_paths_rejected(self):
+        self.assertIsNone(parse_query("/2020-01-02/ASN/NO/US"))
+
     def test_empty_and_overlong_paths_rejected(self):
         self.assertIsNone(parse_query("//US"))
         self.assertIsNone(parse_query("/NO/extra"))

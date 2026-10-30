@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from lib.config import Config, load
 from lib.ratelimit import RateLimiter
-from lib.s3data import DataStore, latest_key
+from lib.s3data import DataStore, historic_key, latest_key
 from lib.tokens import TokenStore
 from lib.whois import parse_query, render_json, render_plain
 
@@ -55,6 +55,25 @@ class WhoisHandler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self):
+        try:
+            self._route_get()
+        except Exception:
+            logger.exception("Request failed: %s", self.path)
+            try:
+                self._send(500, "Internal error\n", "text/plain; charset=utf-8")
+            except OSError:
+                pass  # the client connection was already gone
+
+    def _client_ip(self) -> str:
+        # Behind the adapter every TCP peer is the local proxy; the real client
+        # arrives in X-Forwarded-For. Verify exact adapter header semantics at
+        # deployment (follow-up of the invoke-mode open item).
+        forwarded = self.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return self.client_address[0]
+
+    def _route_get(self):
         today = date.today().isoformat()
         path = self.path
         if path.split("?", 1)[0] == "/":
@@ -71,7 +90,7 @@ class WhoisHandler(BaseHTTPRequestHandler):
 
         body = None
         if query.date is None:
-            if not self.deps.limiter.allow(self.client_address[0], today):
+            if not self.deps.limiter.allow(self._client_ip(), today):
                 self._send(
                     429,
                     "Rate limit exceeded\n",
@@ -103,10 +122,7 @@ class WhoisHandler(BaseHTTPRequestHandler):
                 return
             body = self.deps.store.get_historic(query.date, query.rectype, query.cc)
             if body is None:
-                key = query.date.replace("-", "/")
-                # zero-pad via date arithmetic for test-exact keys
-                year, month, day = query.date.split("-")
-                key = f"{year}/{month}/{day}/{query.cc}_{query.rectype}"
+                key = historic_key(query.date, query.rectype, query.cc)
                 self._send(
                     404,
                     f"Missing data: {key}\n",

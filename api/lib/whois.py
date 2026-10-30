@@ -41,19 +41,17 @@ def parse_query(path: str) -> Query | None:
     if _valid_date(first):
         date = first
         options = segments[1:]
-        if not options:
-            return None  # a date alone does not name a country
-        cc_candidate, rectype_candidate = options[-1], options[0]
-        if len(options) == 2 and options[0].upper() not in RECORD_TYPES:
-            return None
-        rectype = rectype_candidate.upper() if len(options) == 2 else "ASN"
+        if not 1 <= len(options) <= 2:
+            return None  # a date alone does not name a country; >2 is not a form
+        cc_candidate = options[-1]
+        rectype = options[0].upper() if len(options) == 2 else "ASN"
     else:
         date = None
         options = segments
-        cc_candidate, rectype_candidate = options[-1], options[0]
-        if len(options) == 2 and options[0].upper() not in RECORD_TYPES:
+        if len(options) > 2:
             return None
-        rectype = rectype_candidate.upper() if len(options) == 2 else "ASN"
+        cc_candidate = options[-1]
+        rectype = options[0].upper() if len(options) == 2 else "ASN"
 
     cc = cc_candidate.upper()
     if not _CC_RE.match(cc):

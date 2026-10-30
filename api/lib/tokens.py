@@ -3,8 +3,6 @@
 import hashlib
 import datetime
 
-from botocore.exceptions import ClientError
-
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -46,7 +44,9 @@ class TokenStore:
                 ExpressionAttributeValues={":incr": 1, ":quota": self._quota(tk)},
             )
             return True
-        except (self.table.meta.client.exceptions.ConditionalCheckFailedException, ClientError):
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            # Genuine budget exhaustion; any other error propagates to the
+            # server's 500 handler (a throttled write is never "quota exhausted").
             return False
 
     def _quota(self, tk: str) -> int:

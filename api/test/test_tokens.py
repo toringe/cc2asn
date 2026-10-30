@@ -102,6 +102,18 @@ class TestConsume(unittest.TestCase):
             second.kwargs["ExpressionAttributeValues"][":quota"], 10
         )
 
+    def test_non_conditional_ddb_errors_propagate(self):
+        table = make_table()
+        class ThroughputError(Exception):
+            pass
+        table.update_item.side_effect = [
+            table.meta.client.exceptions.ConditionalCheckFailedException({}, "x"),
+            ThroughputError("ProvisionedThroughputExceeded"),
+        ]
+        store = TokenStore(table)
+        with self.assertRaises(ThroughputError):
+            store.consume(TOKEN, TODAY)
+
     def test_day_rollover_resets_counter(self):
         table = make_table(item=make_item(used_date="2026-10-29", used_today=777))
         store = TokenStore(table)

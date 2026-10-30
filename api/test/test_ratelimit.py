@@ -13,6 +13,17 @@ class TestRateLimiter(unittest.TestCase):
         results = [limiter.allow("1.2.3.4", "2026-10-30", now=1000.0 + i) for i in range(4)]
         self.assertEqual(results, [True, True, True, False])
 
+    def test_buckets_bounded_under_unique_ip_flood(self):
+        limiter = RateLimiter(per_minute=1000, per_day=100000)
+        for i in range(2000):
+            limiter.allow(f"10.1.0.{i}", "2026-10-30", now=1000.0)
+        # all 2000 are live in-window: dict may hold them
+        self.assertGreaterEqual(len(limiter._buckets), 2000)
+        # after time passes and new traffic arrives, stale entries are evicted
+        for _ in range(128):  # cross the every-128-calls sweep boundary
+            limiter.allow("10.1.0.0", "2026-10-31", now=2000.0)
+        self.assertLessEqual(len(limiter._buckets), 128)
+
     def test_minute_window_expires(self):
         limiter = RateLimiter(per_minute=3, per_day=10)
         for i in range(3):

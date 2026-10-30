@@ -33,7 +33,9 @@ AWS-side steps, in order. The Makefile gates all `aws` calls behind
 `CONFIRM_DEPLOY=yes`; run them here only after the human partner has approved
 in conversation. Region is `eu-west-1` (same as the bucket).
 
-Read-only status checks are allowed without approval:
+Read-only status checks are allowed without approval. First, authenticate
+(`aws login` — re-run if the session expired), then start from read-only
+checks:
 
     # latest adapter layer version (update LAYER_VERSION in the Makefile):
     aws lambda list-layer-versions \
@@ -50,8 +52,12 @@ Read-only status checks are allowed without approval:
 
 2. Execution role: `CC2ASN-api-role` with trust policy for
    `lambda.amazonaws.com`; inline policy granting `s3:GetObject` on
-   `arn:aws:s3:::cc2asn-db` + `arn:aws:s3:::cc2asn-db/*` and read/write(+scan)
-   on the `cc2asn-tokens` table ARN.
+   `arn:aws:s3:::cc2asn-db` + `arn:aws:s3:::cc2asn-db/*`, read/write(+scan)
+   on the `cc2asn-tokens` table ARN, and CloudWatch Logs actions
+   `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`
+   (without them the function emits no logs at all). Easier alternative:
+   attach the managed `AWSLambdaBasicExecutionRole` plus the inline S3/DDB
+   policy.
 
 3. Function creation (first deploy):
 

@@ -6,7 +6,7 @@ LAYER_ARN = arn:aws:lambda:$(REGION):753240598075:layer:LambdaAdapterLayerArm64
 # Required for deploy-create; see README deployment checklist steps 1-2.
 ROLE_ARN =
 LAYER_VERSION =
-deploy-create: check-create-env
+deploy-create: check-create-env build
 check-create-env:
 ifeq ($(ROLE_ARN),)
 	$(error set ROLE_ARN=arn:aws:iam::<account>:role/CC2ASN-api-role — README step 2)
