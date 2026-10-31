@@ -66,6 +66,9 @@ checks:
    Runtime python3.14, arm64, 512 MB, 10 s timeout, handler `run.sh`,
    layer attached, env vars: `AWS_LWA_EXEC_WRAPPER=/opt/bootstrap`,
    `PORT`, `CC2ASN_DB_BUCKET`, `CC2ASN_TOKENS_TABLE`.
+   Layer version pinned at deploy: `LAYER_VERSION=30` verified
+   publicly readable on 2026-10-31 (:31 exists but is not yet publicly
+   shared; re-check via the read-only GetLayerVersion probe).
 
 4. Front door: Function URL `--auth-type NONE --invoke-mode BUFFERED`.
    Note (design open item): the adapter's Function-URL invoke payload handling
