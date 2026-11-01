@@ -1,4 +1,7 @@
-"""Token lookup and atomic daily-quota consumption against DynamoDB."""
+"""Token lookup and atomic daily-quota consumption against DynamoDB.
+
+Token items carry tier "standard" or "pro".
+"""
 
 import hashlib
 import datetime

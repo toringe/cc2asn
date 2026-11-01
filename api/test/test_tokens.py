@@ -13,7 +13,7 @@ def make_item(**overrides):
     item = {
         "tk": hash_token(TOKEN),
         "name": "test-customer",
-        "tier": "historic",
+        "tier": "standard",
         "daily_quota": 10,
     }
     item.update(overrides)

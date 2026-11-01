@@ -26,7 +26,9 @@ TABLE = "cc2asn-tokens"
 def _parse_args(argv):
     parser = argparse.ArgumentParser(description="Issue or revoke CC2ASN API tokens")
     parser.add_argument("--name", help="token description, e.g. customer/company name")
-    parser.add_argument("--tier", choices=("historic", "historic-pro"), default="historic")
+    parser.add_argument(
+        "--tier", choices=("standard", "pro"), default="standard"
+    )
     parser.add_argument("--quota", type=int, default=100, help="allowed historic lookups per day")
     parser.add_argument(
         "--days", type=int, default=None, help="token validity in days (no expiry if omitted)"
@@ -46,8 +48,7 @@ def _create(args, table) -> int:
         "tk": hash_token(token),
         "name": args.name,
         "tier": args.tier,
-        "daily_quota": args.quota,
-    }
+        "daily_quota": args.quota,    }
     if args.days is not None:
         item["expires_on"] = (
             datetime.date.today() + datetime.timedelta(days=args.days)

@@ -50,16 +50,16 @@ class TestIssueToken(unittest.TestCase):
         args = table.put_item.call_args.kwargs["Item"]
         self.assertEqual(args["tk"], hash_token(token))
         self.assertEqual(args["name"], "acme")
-        self.assertEqual(args["tier"], "historic")
+        self.assertEqual(args["tier"], "standard")
         self.assertEqual(args["daily_quota"], 500)
         self.assertIn("expires_on", args)
 
     def test_create_without_days_has_no_expiry(self):
         table, code, out = MagicMock(), None, None
-        code, out = self._run(["--name", "acme", "--tier", "historic-pro"], table)
+        code, out = self._run(["--name", "acme", "--tier", "pro"], table)
         self.assertEqual(code, 0)
         args = table.put_item.call_args.kwargs["Item"]
-        self.assertEqual(args["tier"], "historic-pro")
+        self.assertEqual(args["tier"], "pro")
         self.assertNotIn("expires_on", args)
 
     def test_revoke_deletes_matching_name(self):

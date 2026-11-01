@@ -21,6 +21,7 @@ class DataStore:
         self.cache_ttl = cache_ttl
         self._client = client
         self._cache = {}
+        self.last_source = None  # "cache" | "s3" | None (after last get_latest)
 
     def _now(self) -> float:
         return time.time()
@@ -48,8 +49,10 @@ class DataStore:
         if cached is not None:
             fetched_at, body = cached
             if self._now() - fetched_at <= self.cache_ttl:
+                self.last_source = "cache"
                 return body
         body = self._fetch(key)
+        self.last_source = "s3" if body is not None else None
         if body is not None:
             self._cache[key] = (self._now(), body)
         return body

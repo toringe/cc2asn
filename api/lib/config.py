@@ -13,6 +13,8 @@ class Config:
     rate_per_minute: int = 30
     rate_per_day: int = 300
     cache_ttl: int = 300
+    log_group_latest: str = "/cc2asn/api/latest"
+    log_group_historic: str = "/cc2asn/api/historic"
 
 
 _INT_VARS = {
@@ -25,6 +27,8 @@ _INT_VARS = {
 _STR_VARS = {
     "CC2ASN_DB_BUCKET": "bucket",
     "CC2ASN_TOKENS_TABLE": "table",
+    "CC2ASN_LOG_GROUP_LATEST": "log_group_latest",
+    "CC2ASN_LOG_GROUP_HISTORIC": "log_group_historic",
 }
 
 

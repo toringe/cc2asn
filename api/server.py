@@ -2,11 +2,14 @@
 
 import logging
 import os
+import datetime
+import time
 from dataclasses import dataclass
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from lib.config import Config, load
+from lib.querylog import historic_line, legacy_line
 from lib.ratelimit import RateLimiter
 from lib.s3data import DataStore, historic_key, latest_key
 from lib.tokens import TokenStore
@@ -26,10 +29,14 @@ class Deps:
     store: DataStore
     tokens: TokenStore
     limiter: RateLimiter
+    latest_log: object | None = None   # QueryLog for free latest-day lookups
+    historic_log: object | None = None  # QueryLog for historic lookups
 
 
 def build_deps(config: Config) -> Deps:
     import boto3
+
+    from lib.querylog import QueryLog
 
     store = DataStore(bucket=config.bucket, cache_ttl=config.cache_ttl)
     table = boto3.resource("dynamodb").Table(config.table)
@@ -38,6 +45,8 @@ def build_deps(config: Config) -> Deps:
         store=store,
         tokens=TokenStore(table),
         limiter=RateLimiter(per_minute=config.rate_per_minute, per_day=config.rate_per_day),
+        latest_log=QueryLog(config.log_group_latest),
+        historic_log=QueryLog(config.log_group_historic),
     )
 
 
@@ -73,7 +82,17 @@ class WhoisHandler(BaseHTTPRequestHandler):
             return forwarded.split(",")[0].strip()
         return self.client_address[0]
 
+    def _log_query(self, writer, line: str, stream_date: str) -> None:
+        """Best-effort per-query log write; never breaks the response."""
+        if writer is None:
+            return
+        try:
+            writer.write(line, stream_date=stream_date)
+        except Exception:
+            logger.warning("Query log write failed", exc_info=True)
+
     def _route_get(self):
+        start = time.monotonic()
         today = date.today().isoformat()
         path = self.path
         if path.split("?", 1)[0] == "/":
@@ -106,6 +125,7 @@ class WhoisHandler(BaseHTTPRequestHandler):
                     "text/plain; charset=utf-8",
                 )
                 return
+            source = self.deps.store.last_source or "s3"
         else:
             token = self._bearer_token()
             item = self.deps.tokens.authorize(token, today) if token else None
@@ -129,12 +149,34 @@ class WhoisHandler(BaseHTTPRequestHandler):
                     "text/plain; charset=utf-8",
                 )
                 return
+            source = "s3"
+            tier = item.get("tier", "standard")
+            tok_prefix = item.get("tk", "")[:8]
 
         headers = {"X-Data-Date": data_date}
         if want_json:
             self._send(200, render_json(query, data_date, body), "application/json", headers)
         else:
             self._send(200, render_plain(body), "text/plain; charset=utf-8", headers)
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ms = int((time.monotonic() - start) * 1000)
+        stream_date = now.strftime("%Y/%m/%d")
+        if query.date is None:
+            self._log_query(
+                self.deps.latest_log,
+                legacy_line(now, self._client_ip(), query.rectype, query.cc),
+                stream_date,
+            )
+        else:
+            self._log_query(
+                self.deps.historic_log,
+                historic_line(
+                    now, self._client_ip(), query.rectype, query.cc,
+                    date=query.date, ms=ms, source=source, tier=tier, tok_prefix=tok_prefix,
+                ),
+                stream_date,
+            )
 
     def _bearer_token(self) -> str | None:
         header = self.headers.get("Authorization")

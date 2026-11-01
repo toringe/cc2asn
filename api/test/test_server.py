@@ -15,11 +15,14 @@ class StubStore:
 
     def __init__(self, data=None):
         self.data = data or {}
+        self.last_source = None
 
     def get_latest(self, rectype, cc):
+        self.last_source = "s3"
         return self.data.get(f"latest/{cc}_{rectype}")
 
     def get_historic(self, date, rectype, cc):
+        self.last_source = "s3"
         y, m, d = date.split("-")
         return self.data.get(f"{y}/{m}/{d}/{cc}_{rectype}")
 
@@ -71,15 +74,35 @@ class ServerFixture(unittest.TestCase):
         return result
 
 
+class RecordingLatestLog:
+    def __init__(self, *a):
+        self.lines = []
+
+    def write(self, line, stream_date, now_ms=None):
+        self.lines.append(line)
+        return True
+
+
+class RecordingHistoricLog(RecordingLatestLog):
+    pass
+
+
+class BrokenLogger:
+    def write(self, *a):
+        raise RuntimeError("ddb down")
+
+
 DOCS = {"latest/NO_ASN": "AS224\nAS2116", "2020/01/02/US_ASN": "AS100"}
 
 
-def good_deps():
+def good_deps(latest_log=None, historic_log=None, tokens=None):
     return Deps(
         config=Config(),
         store=StubStore(data=DOCS),
-        tokens=StubTokens(valid=[("good", "c1")]),
+        tokens=tokens or StubTokens(valid=[("good", "c1")]),
         limiter=ForgivingLimiter(),
+        latest_log=latest_log or RecordingLatestLog(),
+        historic_log=historic_log or RecordingHistoricLog(),
     )
 
 
@@ -150,11 +173,8 @@ class TestServerRouting(ServerFixture):
                 self.assertEqual(body, "Unauthorized\n")
 
     def test_token_quota_exhausted_returns_429(self):
-        deps = Deps(
-            config=Config(),
-            store=StubStore(data=DOCS),
-            tokens=StubTokens(valid=[("good", "c1")], exhausted=["good"]),
-            limiter=ForgivingLimiter(),
+        deps = good_deps(
+            tokens=StubTokens(valid=[("good", "c1")], exhausted=["good"])
         )
         status, _, body = self.get(
             deps, "/2020-01-02/US", headers={"Authorization": "Bearer good"}
@@ -173,6 +193,53 @@ class TestServerRouting(ServerFixture):
         self.assertEqual(status, 429)
         self.assertEqual(body, "Rate limit exceeded\n")
         self.assertEqual(headers.get("Retry-After"), "60")
+
+    def test_broken_logger_does_not_break_responses(self):
+        deps = good_deps(latest_log=BrokenLogger())
+        status, _, body = self.get(deps, "/NO")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "AS224\nAS2116\n")
+
+    def test_various_signatures_backward_compat(self):
+        self.get(self.deps, "/NO")
+        status, _, _ = self.get(self.deps, "/US")
+        self.assertEqual(status, 404)
+
+    def test_latest_query_logged_in_legacy_format(self):
+        import re
+
+        deps = good_deps()
+        self.get(deps, "/NO", headers={"X-Forwarded-For": "8.8.8.8"})
+        self.assertEqual(len(deps.latest_log.lines), 1)
+        pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} 8\.8\.8\.8 ASN NO$"
+        self.assertRegex(deps.latest_log.lines[0], pattern)
+        self.assertEqual(deps.historic_log.lines, [])
+
+    def test_historic_query_logged_enriched(self):
+        import re
+
+        deps = good_deps()
+        status, _, _ = self.get(
+            deps, "/2020-01-02/US", headers={"Authorization": "Bearer good"}
+        )
+        self.assertEqual(status, 200)
+        pattern = (
+            r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \S+ ASN US "
+            r"date=2020-01-02 status=200 ms=\d+ src=s3 tier=\S* tok=good"
+        )
+        self.assertRegex(deps.historic_log.lines[0], pattern)
+
+    def test_failed_lookups_not_logged_as_queries(self):
+        for path, headers in (
+            ("/2020-01-02/US", {}),
+            ("/US", {}),
+            ("/2020-01-03/US", {"Authorization": "Bearer good"}),
+        ):
+            with self.subTest(path=path):
+                deps = good_deps()
+                self.get(deps, path, headers=headers)
+                self.assertEqual(deps.latest_log.lines, [])
+                self.assertEqual(deps.historic_log.lines, [])
 
     def test_rate_limit_uses_forwarded_ip(self):
         deps = good_deps()

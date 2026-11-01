@@ -36,6 +36,15 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(historic_key("2026-03-05", "ASN", "SE"), "2026/03/05/SE_ASN")
 
 
+    def test_last_source_reports_cache_and_s3(self):
+        client = make_client()
+        store = DataStore("bkt", cache_ttl=300, client=client)
+        store.get_latest("ASN", "NO")
+        self.assertEqual(store.last_source, "s3")
+        store.get_latest("ASN", "NO")
+        self.assertEqual(store.last_source, "cache")
+
+
 class TestLatestCache(unittest.TestCase):
     def test_second_call_within_ttl_does_not_refetch(self):
         client = make_client()

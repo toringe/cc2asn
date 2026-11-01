@@ -16,9 +16,22 @@ Endpoints (plain text by default, `?format=json` for structured output):
     GET /{YYYY-MM-DD}/{CC}     historic, exact date, requires token (404 if no data)
     GET /{YYYY-MM-DD}/{TYPE}/{CC}
 
-Tokens: `uv run python scripts/issue_token.py --name ACME --quota 500 [--days 30]`.
-Only the SHA-256 hash is stored; the plaintext is printed once. Revoke with
-`--revoke ACME`.
+Tokens: `uv run python scripts/issue_token.py --name ACME --tier standard --quota 500 [--days 30]`.
+Tiers: `standard` (default) and `pro`. Only the SHA-256 hash is stored; the plaintext
+is printed once. Revoke with `--revoke ACME`.
+
+## Query logs (CloudWatch)
+
+Successful lookups are written per request to two dedicated log groups
+(`lib/querylog.py`), one **CloudWatch stream per day**, 180-day retention:
+
+- `/cc2asn/api/latest` — free latest-day lookups, exact whois line format:
+  `2026-11-01 13:04:51 141.101.104.69 IPV4 US`
+- `/cc2asn/api/historic` — historic lookups, legacy prefix plus:
+  `date=(the requested day) status=(200) ms=(duration) src=(cache|s3) tier=(standard|pro) tok=(sha256 8-char prefix)`
+
+Failures (401/404/429/500), banners and lifecycle events stay in the
+function's own `/aws/lambda/CC2ASN-api` operational group.
 
 Tests: `uv run python -m unittest discover -s test -t .`
 
