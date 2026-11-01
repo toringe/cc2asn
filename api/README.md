@@ -71,8 +71,21 @@ checks:
    shared; re-check via the read-only GetLayerVersion probe).
 
 4. Front door: Function URL `--auth-type NONE --invoke-mode BUFFERED`.
-   Note (design open item): the adapter's Function-URL invoke payload handling
-   is verified at first deploy; BUFFERED is the default invoke mode.
+
+   **Important (Oct 2025+ policy rule): URLs created via the CLI do NOT auto-add
+   the needed resource policy — add BOTH statements manually:**
+
+    aws lambda add-permission --function-name CC2ASN-api \
+        --statement-id FunctionURLAllowPublicUse \
+        --action lambda:InvokeFunctionUrl --principal "*" \
+        --function-url-auth-type NONE
+    aws lambda add-permission --function-name CC2ASN-api \
+        --statement-id FunctionURLInvokeAllowPublicAccess \
+        --action lambda:InvokeFunction --principal "*" \
+        --invoked-via-function-url
+
+   (Missing the second `lambda:InvokeFunction` statement yields `403 AccessDeniedException`
+   from the URL service even with auth-type NONE.)
 
 5. Code updates afterwards:
 
