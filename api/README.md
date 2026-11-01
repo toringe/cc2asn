@@ -72,12 +72,26 @@ checks:
    attach the managed `AWSLambdaBasicExecutionRole` plus the inline S3/DDB
    policy.
 
+2b. Query log groups (they are NOT auto-created by the app):
+
+    aws logs create-log-group --log-group-name /cc2asn/api/latest --region eu-west-1
+    aws logs create-log-group --log-group-name /cc2asn/api/historic --region eu-west-1
+    aws logs put-retention-policy --log-group-name /cc2asn/api/latest --retention-in-days 180
+    aws logs put-retention-policy --log-group-name /cc2asn/api/historic --retention-in-days 180
+    aws logs put-retention-policy --log-group-name /aws/lambda/CC2ASN-api --retention-in-days 180
+
+   (The runtime does self-heal a missing group once, inside the request,
+   but creating them upfront keeps the first lookups clean; retention is
+   CLI-only and required — groups otherwise never expire.)
+
 3. Function creation (first deploy):
 
     make CONFIRM_DEPLOY=yes deploy-create   # requires ROLE_ARN and LAYER_VERSION set
 
    Runtime python3.14, arm64, 512 MB, 10 s timeout, handler `run.sh`,
-   layer attached, env vars: `AWS_LWA_EXEC_WRAPPER=/opt/bootstrap`,
+   layer attached, env vars: `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`
+   (the exact wrapper name matters — a typo boots to a Python import
+   error instead of starting the app),
    `PORT`, `CC2ASN_DB_BUCKET`, `CC2ASN_TOKENS_TABLE`.
    Layer version pinned at deploy: `LAYER_VERSION=30` verified
    publicly readable on 2026-10-31 (:31 exists but is not yet publicly

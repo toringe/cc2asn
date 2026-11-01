@@ -1,5 +1,6 @@
 """CC2ASN WHOIS-WEB API: a stdlib HTTP server exposing cc2asn-db data."""
 
+import json
 import logging
 import os
 import datetime
@@ -74,9 +75,19 @@ class WhoisHandler(BaseHTTPRequestHandler):
                 pass  # the client connection was already gone
 
     def _client_ip(self) -> str:
-        # Behind the adapter every TCP peer is the local proxy; the real client
-        # arrives in X-Forwarded-For. Verify exact adapter header semantics at
-        # deployment (follow-up of the invoke-mode open item).
+        # Behind the adapter the trusted caller identity arrives in
+        # x-amzn-request-context (JSON payload; http.sourceIp) — verified live
+        # 2026-11-01. X-Forwarded-For is client-controlled on the public URL
+        # and must not be trusted there; the XFF/TCP-peer fallbacks are for
+        # local development runs only.
+        context = self.headers.get("x-amzn-request-context")
+        if context:
+            try:
+                source_ip = json.loads(context).get("http", {}).get("sourceIp")
+                if source_ip:
+                    return source_ip
+            except ValueError:
+                pass
         forwarded = self.headers.get("X-Forwarded-For")
         if forwarded:
             return forwarded.split(",")[0].strip()
@@ -92,6 +103,11 @@ class WhoisHandler(BaseHTTPRequestHandler):
             logger.warning("Query log write failed", exc_info=True)
 
     def _route_get(self):
+        if self.path.split("?", 1)[0] == "/__hdr":
+            # TEMPORARY header probe (removed with next deploy)
+            hdrs = {k.lower(): v for k, v in self.headers.items()}
+            self._send(200, repr(hdrs), "text/plain; charset=utf-8")
+            return
         start = time.monotonic()
         today = date.today().isoformat()
         path = self.path

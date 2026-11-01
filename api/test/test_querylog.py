@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 
 from lib.querylog import QueryLog, historic_line, legacy_line
 
+import os
+
 
 UTC = timezone.utc
 
@@ -92,10 +94,66 @@ class TestQueryLogWrite(unittest.TestCase):
 
     def test_other_errors_propagate(self):
         client = self.make_client()
+        client.exceptions.ResourceNotFoundException = type(
+            "ResourceNotFoundException", (Exception,), {}
+        )
         boom = type("Boom", (Exception,), {})
         client.create_log_stream.side_effect = boom({}, "x")
         log = QueryLog("/cc2asn/api/latest", client=client)
         with self.assertRaises(boom):
+            log.write("a", stream_date="2026/11/01", now_ms=1)
+
+
+class TestLogClientHardening(unittest.TestCase):
+    def test_lazy_client_has_bounded_timeouts(self):
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch("boto3.client") as client_factory:
+            log = QueryLog("/g")
+            _ = log.client  # triggers lazy construction
+            kwargs = client_factory.call_args.kwargs
+            self.assertEqual(kwargs["config"].connect_timeout, 1)
+            self.assertEqual(kwargs["config"].read_timeout, 2)
+            self.assertEqual(kwargs["config"].retries["max_attempts"], 1)
+
+    def test_missing_log_group_is_recovered(self):
+        client = self.make_client()
+        client.exceptions.ResourceNotFoundException = type(
+            "ResourceNotFoundException", (Exception,), {}
+        )
+        # First stream creation fails on the missing group; recovery follows.
+        client.create_log_stream.side_effect = [
+            client.exceptions.ResourceNotFoundException({}, "x"),
+            {},
+        ]
+        log = QueryLog("/cc2asn/api/latest", client=client)
+        log.write("a", stream_date="2026/11/01", now_ms=1)
+        client.create_log_group.assert_called_once_with(
+            logGroupName="/cc2asn/api/latest"
+        )
+        self.assertEqual(client.put_log_events.call_count, 1)
+
+    def make_client(self):
+        client = MagicMock()
+        body = MagicMock()
+        body.read.return_value = b""
+        body.__exit__ = MagicMock(return_value=False)
+        client.get_object.return_value = {"Body": body}
+        client.exceptions = MagicMock()
+        client.exceptions.ResourceAlreadyExistsException = type(
+            "ResourceAlreadyExistsException", (Exception,), {}
+        )
+        client.exceptions.ResourceNotFoundException = type(
+            "ResourceNotFoundException", (Exception,), {}
+        )
+        return client
+
+    def test_other_errors_propagate(self):
+        client = self.make_client()
+        other = type("SomeOtherError", (Exception,), {})
+        client.create_log_stream.side_effect = other({}, "x")
+        log = QueryLog("/cc2asn/api/latest", client=client)
+        with self.assertRaises(other):
             log.write("a", stream_date="2026/11/01", now_ms=1)
 
 

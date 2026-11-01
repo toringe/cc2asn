@@ -241,6 +241,27 @@ class TestServerRouting(ServerFixture):
                 self.assertEqual(deps.latest_log.lines, [])
                 self.assertEqual(deps.historic_log.lines, [])
 
+    def test_rate_limit_prefers_request_context_IP(self):
+        deps = good_deps()
+        self.get(
+            deps,
+            "/NO",
+            headers={
+                "X-Forwarded-For": "6.6.6.6",
+                "x-amzn-request-context": '{"http":{"sourceIp":"2.2.2.2"}}',
+            },
+        )
+        self.assertEqual(deps.limiter.last_ip, "2.2.2.2")
+
+    def test_client_ip_falls_back_to_xff_when_context_unparseable(self):
+        deps = good_deps()
+        self.get(
+            deps,
+            "/NO",
+            headers={"x-amzn-request-context": "not-json", "X-Forwarded-For": "9.9.9.9"},
+        )
+        self.assertEqual(deps.limiter.last_ip, "9.9.9.9")
+
     def test_rate_limit_uses_forwarded_ip(self):
         deps = good_deps()
         self.get(deps, "/NO", headers={"X-Forwarded-For": "8.8.8.8, 10.0.0.1"})

@@ -43,8 +43,19 @@ class QueryLog:
     def client(self):
         if self._client is None:
             import boto3
+            from botocore.config import Config
 
-            self._client = boto3.client("logs")
+            # Bounded timeouts: the function allows 10s total; a hung Logs
+            # endpoint must degrade to a served response plus a warning,
+            # never to event-loop blockage.
+            self._client = boto3.client(
+                "logs",
+                config=Config(
+                    connect_timeout=1,
+                    read_timeout=2,
+                    retries={"max_attempts": 1},
+                ),
+            )
         return self._client
 
     def _ensure_stream(self, stream_name: str) -> None:
@@ -56,6 +67,12 @@ class QueryLog:
             )
         except self.client.exceptions.ResourceAlreadyExistsException:
             pass  # another environment created it first
+        except self.client.exceptions.ResourceNotFoundException:
+            # Group missing (fresh deployment); recover once.
+            self.client.create_log_group(logGroupName=self.group_name)
+            self.client.create_log_stream(
+                logGroupName=self.group_name, logStreamName=stream_name
+            )
         self._streams.add(stream_name)
 
     def write(self, line: str, stream_date: str, now_ms: int | None = None) -> bool:
