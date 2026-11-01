@@ -153,15 +153,13 @@ class WhoisHandler(BaseHTTPRequestHandler):
             tier = item.get("tier", "standard")
             tok_prefix = item.get("tk", "")[:8]
 
-        headers = {"X-Data-Date": data_date}
-        if want_json:
-            self._send(200, render_json(query, data_date, body), "application/json", headers)
-        else:
-            self._send(200, render_plain(body), "text/plain; charset=utf-8", headers)
-
         now = datetime.datetime.now(datetime.timezone.utc)
         ms = int((time.monotonic() - start) * 1000)
         stream_date = now.strftime("%Y/%m/%d")
+        # The query log write MUST happen before the response is sent:
+        # PutLogEvents calls placed after _send() were observed to never
+        # complete in this runtime/adapter setup (see plan ledger).
+        # It is best-effort: failures never break the response.
         if query.date is None:
             self._log_query(
                 self.deps.latest_log,
@@ -177,6 +175,12 @@ class WhoisHandler(BaseHTTPRequestHandler):
                 ),
                 stream_date,
             )
+
+        headers = {"X-Data-Date": data_date}
+        if want_json:
+            self._send(200, render_json(query, data_date, body), "application/json", headers)
+        else:
+            self._send(200, render_plain(body), "text/plain; charset=utf-8", headers)
 
     def _bearer_token(self) -> str | None:
         header = self.headers.get("Authorization")
