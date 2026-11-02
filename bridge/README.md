@@ -43,8 +43,9 @@ Requires the `gcloud` CLI, a fresh project, and the free-tier region
     gcloud services enable compute.googleapis.com
 
     # Static external IP: free while attached to a RUNNING instance.
-    # (A static IP attached to a STOPPED instance bills; if you stop the VM
-    # long-term, release the address first.)
+    # (A static IP attached to a STOPPED instance bills, and so does a
+    # reserved-but-unattached one — create the address and the instance in
+    # the same sitting, and when retiring the VM, delete the address too.)
     gcloud compute addresses create cc2asn-whois --region=us-east1
     gcloud compute addresses describe cc2asn-whois --region=us-east1 \
         --format='get(address)'
