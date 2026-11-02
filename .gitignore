@@ -1,2 +1,6 @@
 .vscode/*
 .DS_Store
+.venv/
+example-s3/
+.opencode/skills/
+.opencode/
