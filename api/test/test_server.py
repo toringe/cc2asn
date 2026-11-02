@@ -211,7 +211,7 @@ class TestServerRouting(ServerFixture):
         deps = good_deps()
         self.get(deps, "/NO", headers={"X-Forwarded-For": "8.8.8.8"})
         self.assertEqual(len(deps.latest_log.lines), 1)
-        pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} 8\.8\.8\.8 ASN NO$"
+        pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} 8\.8\.8\.8 ASN NO src=(http|tcp43)$"
         self.assertRegex(deps.latest_log.lines[0], pattern)
         self.assertEqual(deps.historic_log.lines, [])
 

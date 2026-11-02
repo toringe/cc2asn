@@ -25,8 +25,11 @@ is printed once. Revoke with `--revoke ACME`.
 Successful lookups are written per request to two dedicated log groups
 (`lib/querylog.py`), one **CloudWatch stream per day**, 180-day retention:
 
-- `/cc2asn/api/latest` — free latest-day lookups, exact whois line format:
-  `2026-11-01 13:04:51 141.101.104.69 IPV4 US`
+- `/cc2asn/api/latest` — free latest-day lookups, legacy whois line format
+  plus a source marker:
+  `2026-11-01 13:04:51 141.101.104.69 IPV4 US src=http|tcp43`
+  (`src=tcp43` = whois bridge traffic; the IP is the end user's, forwarded
+  behind the bridge secret — see below).
 - `/cc2asn/api/historic` — historic lookups, legacy prefix plus:
   `date=(the requested day) status=(200) ms=(duration) src=(cache|s3) tier=(standard|pro) tok=(sha256 8-char prefix)`
 
@@ -92,7 +95,12 @@ checks:
    layer attached, env vars: `AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap`
    (the exact wrapper name matters — a typo boots to a Python import
    error instead of starting the app),
-   `PORT`, `CC2ASN_DB_BUCKET`, `CC2ASN_TOKENS_TABLE`.
+   `PORT`, `CC2ASN_DB_BUCKET`, `CC2ASN_TOKENS_TABLE`, and
+   `CC2ASN_BRIDGE_SECRET` (shared secret for the whois bridge — bridge
+   requests bring `Authorization: Bearer <secret>` + the user's IP in
+   `X-Forwarded-For`, trusted only on a constant-time match; per-user rate
+   limits and logging apply to the forwarded IP. Empty/absent = bridge
+   support disabled).
    Layer version pinned at deploy: `LAYER_VERSION=30` verified
    publicly readable on 2026-10-31 (:31 exists but is not yet publicly
    shared; re-check via the read-only GetLayerVersion probe).

@@ -1,6 +1,7 @@
 """CC2ASN WHOIS-WEB API: a stdlib HTTP server exposing cc2asn-db data."""
 
 import json
+import hmac
 import logging
 import os
 import datetime
@@ -74,12 +75,37 @@ class WhoisHandler(BaseHTTPRequestHandler):
             except OSError:
                 pass  # the client connection was already gone
 
+    def _is_bridge(self) -> bool:
+        """True for bridge-originated requests: the shared secret matches.
+
+        The bridge sends `Authorization: Bearer <CC2ASN_BRIDGE_SECRET>` plus
+        the originating user's IP in X-Forwarded-For. Direct public callers
+        can never forge the compare, so XFF stays untrusted for them.
+        """
+        header = self.headers.get("Authorization")
+        secret = self.deps.config.bridge_secret
+        if not header or not secret:
+            return False
+        parts = header.split(" ")
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return False
+        return hmac.compare_digest(parts[1], secret)
+
     def _client_ip(self) -> str:
         # Behind the adapter the trusted caller identity arrives in
         # x-amzn-request-context (JSON payload; http.sourceIp) — verified live
         # 2026-11-01. X-Forwarded-For is client-controlled on the public URL
         # and must not be trusted there; the XFF/TCP-peer fallbacks are for
         # local development runs only.
+        #
+        # Bridge requests are the exception: they carry the end user's IP in
+        # XFF behind the bridge secret, and the adapter context would only
+        # say "the bridge VM's IP". Bridge XFF resolution deliberately skips
+        # the adapter context (the whole point is per-user logging/limits).
+        if self._is_bridge():
+            forwarded = self.headers.get("X-Forwarded-For")
+            if forwarded:
+                return forwarded.split(",")[-1].strip()
         context = self.headers.get("x-amzn-request-context")
         if context:
             try:
@@ -179,7 +205,8 @@ class WhoisHandler(BaseHTTPRequestHandler):
         if query.date is None:
             self._log_query(
                 self.deps.latest_log,
-                legacy_line(now, self._client_ip(), query.rectype, query.cc),
+                legacy_line(now, self._client_ip(), query.rectype, query.cc,
+                            src="tcp43" if self._is_bridge() else "http"),
                 stream_date,
             )
         else:

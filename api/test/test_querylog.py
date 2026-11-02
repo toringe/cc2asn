@@ -33,6 +33,22 @@ class TestLegacyLine(unittest.TestCase):
         self.assertEqual(legacy_line(ts, "x", "ASN", "NO"), legacy_line(ts_cet, "x", "ASN", "NO"))
 
 
+    def test_src_suffix_appended_when_given(self):
+        ts = datetime(2026, 11, 1, 13, 4, 51, tzinfo=UTC)
+        self.assertEqual(
+            legacy_line(ts, "141.101.104.69", "IPV4", "US", src="http"),
+            "2026-11-01 13:04:51 141.101.104.69 IPV4 US src=http",
+        )
+        self.assertEqual(
+            legacy_line(ts, "141.101.104.69", "IPV4", "US", src="tcp43"),
+            "2026-11-01 13:04:51 141.101.104.69 IPV4 US src=tcp43",
+        )
+        self.assertEqual(
+            legacy_line(ts, "141.101.104.69", "IPV4", "US"),
+            "2026-11-01 13:04:51 141.101.104.69 IPV4 US",
+        )
+
+
 class TestHistoricLine(unittest.TestCase):
     def test_legacy_prefix_plus_enrichment(self):
         ts = datetime(2026, 11, 1, 13, 7, 2, tzinfo=UTC)
