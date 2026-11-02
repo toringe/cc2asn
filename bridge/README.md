@@ -133,3 +133,14 @@ Check monthly: bridged lookups vs direct API lookups. When the whois fraction
 is negligible, retire the bridge: remove the DNS record, delete the VM (and
 release the static IP — free only while attached to a running instance).
 GitHub/history in this repo is the re-creation path.
+
+Monthly check, concretely (30-day window):
+
+    # API side: bridge vs direct fraction
+    aws logs tail /cc2asn/api/latest --region eu-west-1 --since 30d --format short \
+        | grep -c 'src=tcp43'
+    aws logs tail /cc2asn/api/latest --region eu-west-1 --since 30d --format short \
+        | grep -c 'src=http'
+
+    # VM side: total bridged lookups (all rotations, latest 30 days by mtime)
+    ls -t /var/log/cc2asn/query.log* | xargs cat | wc -l
