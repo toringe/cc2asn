@@ -1,16 +1,16 @@
 # AGENTS.md
 
-## Goal of the `dev` branch: upgrade the pipeline to the Python 3.14 Lambda runtime
+## Current state: all-AWS pipeline on Python 3.14 Lambda + live web API
 
-The `dev` branch targets the **all-AWS pipeline, no new platform**. A full Cloudflare (Workers + R2) port was evaluated on 2026-10-29 and **parked** — the Lambda free tier already runs this workload at zero cost, and the curator's write volume would force Workers Paid (~$5/mo) on Cloudflare. The decision: stay on AWS (Lambda + S3). See "Parked evaluation" at the bottom.
+This repository tracks the **all-AWS pipeline, no new platform**. A full Cloudflare (Workers + R2) port was evaluated on 2026-10-29 and **parked** — the Lambda free tier already runs this workload at zero cost, and the curator's write volume would force Workers Paid (~$5/mo) on Cloudflare. The decision: stay on AWS (Lambda + S3). See "Parked evaluation" at the bottom.
 
-Upgrade status (2026-10-29): the 3.14 upgrade is **deployed** — `lambda/requirements.txt` bumped to 3.14-era pins, `make runtime` target added, Makefile made venv-self-sufficient, code+test scripts verified offline under Python 3.14 (parser ran real SEF data; MD5 verified), and the live functions updated via `make runtime && make deploy all` (runtime `python3.14`, ~16 MB zips). The dev-branch goal is met; next runtime generation: `make RUNTIME=<next> runtime` followed by `make deploy all`.
+Upgrade status (2026-10-29): the pipeline runs on the 3.14 Lambda runtime — `lambda/requirements.txt` bumped to 3.14-era pins, `make runtime` target added, Makefile made venv-self-sufficient, code+test scripts verified offline under Python 3.14 (parser ran real SEF data; MD5 verified), and the live functions updated via `make runtime && make deploy all` (runtime `python3.14`, ~16 MB zips). Next runtime generation: `make RUNTIME=<next> runtime` followed by `make deploy all`.
 
 API status (2026-11-01): the **cc2asn-db web API is implemented and live** — `api/` (see `api/README.md` for endpoints, token issuance, deployment). Function `CC2ASN-api` (Event Function + adapter layer v30, python3.14) with public Function URL; latest-day lookups free + rate-limited; historic lookups behind `standard`/`pro` tokens (DynamoDB `cc2asn-tokens`, provisioned free tier). Query logging to `/cc2asn/api/latest` (legacy whois format, UTC) and `/cc2asn/api/historic` (enriched; `date status ms src tier tok`), both 180-day retention. Costs tracked within free tiers; design/history in `docs/2026-10-29-cc2asn-api-design.md`.
 
 Production reality check: the deployed Lambda code uses plain boto3 S3 clients (no custom `endpoint_url`), so the live system writes to **real AWS S3** (`cc2asn-data` / `cc2asn-db`, eu-west-1). Same-named R2 buckets exist from the evaluation, but nothing in the pipeline uses them — treat them as dormant copies.
 
-**Skills:** on this branch, load the relevant `aws-*` skills (Lambda, S3, IAM, Serverless) before AWS-specific design or code. The repo's installed Cloudflare skills are not needed unless the parked port is reopened.
+**Skills:** in this repository, load the relevant `aws-*` skills (Lambda, S3, IAM, Serverless) before AWS-specific design or code. The repo's installed Cloudflare skills are not needed unless the parked port is reopened.
 
 ## Repo layout
 
@@ -39,8 +39,8 @@ AWS config (`REGION`, `BUCKET`, `PREFIX`) is hardcoded at the top of each module
 
 ## Python environment
 
-- On `master`, `.python-version` holds `cc2asn-λ39` (a pyenv-virtualenv name, Python 3.9). On `dev`, the environment is uv-managed: `.python-version` pins `3.14` and the venv lives in `.venv/` (gitignored). Use `uv run python ...` or `source .venv/bin/activate`; `uv` auto-installs the pinned interpreter.
-- Target runtime for the upgrade: **Python 3.14** (`python3.14`), the newest GA Lambda runtime (3.15 is public preview only; GA targeted ~November 2026 — functions on the preview identifier graduate automatically).
+- `.python-version` pins `3.14`; the environment is uv-managed and the venv lives in `.venv/` (gitignored). Use `uv run python ...` or `source .venv/bin/activate`; `uv` auto-installs the pinned interpreter.
+- Lambda runtime: **Python 3.14** (`python3.14`), the newest GA Lambda runtime (3.15 is public preview only; GA targeted ~November 2026 — functions on the preview identifier graduate automatically).
 - Dev deps: `boto3`, `natsort` (installed via `uv pip install`). `lambda/requirements.txt` now pins **Python 3.14-era** versions (boto3/botocore 1.43.119, natsort 8.4.0, urllib3 2.8.0) — it documents what the built zip bundles; the Makefile re-freezes it from `.venv` on every build, so it needs no manual upkeep for the dev environment.
 - No linter, formatter, typecheck, or CI configuration exists.
 
@@ -54,6 +54,10 @@ AWS config (`REGION`, `BUCKET`, `PREFIX`) is hardcoded at the top of each module
 
 A complete, behavior-preserving Cloudflare implementation plan was produced and verified (three Python Workers + R2 + Queues replacing EventBridge; R2 `put(md5=…)` integrity option replacing local MD5 calc; forced **Workers Paid** because the curator writes ~2k R2 objects/RIPE-file vs the free tier's 50-subrequest cap). It was **not chosen**: the pipeline already runs free on AWS Lambda + S3, so the port would cost ~$5/mo purely for platform consolidation. If consolidation is ever wanted, the archived plan cuts the effort sharply (all docs' load-bearing facts are verified) — see `docs/2026-10-29-cloudflare-port-parked.md`.
 
-## Planned (not started): cc2asn-db Web API (2026-10-29)
+## Open follow-ups (from `docs/2026-10-29-cc2asn-api-design.md`)
 
-Approved design only — **no implementation yet**. An HTTP API over `cc2asn-db` with whois parity + token-gated historic lookups, graded to stay within free tiers. Form factor: **Python (`python3.14`) Event Function + `aws-lambda-web-adapter` behind a Function URL** — stdlib `http.server` + boto3 only, keeping the repo single-language; Web Functions were considered and set aside (not free-tier eligible; reversal re-checkpoint documented since the Node-only constraint limits porting back). Full design, decisions, cost analysis: `docs/2026-10-29-cc2asn-api-design.md`. Implementation will live in a new `api/` folder, separate from the pipeline Python in `lambda/`.
+The cc2asn-db Web API is implemented and live (see "API status" above). Remaining
+follow-ups live in the design doc: the whois-to-API bridge design (retire the
+legacy TCP whois server once traffic is low), commercial tiering on top of the
+existing `standard`/`pro` tokens, and re-checking Lambda Web Functions as the
+form factor whenever their free-tier status changes.
