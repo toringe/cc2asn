@@ -6,7 +6,7 @@ the world. Simply provide country codes as input and you'll get all ASNs, IPv4
 or IPv6 addresses registered to that country. For more detailed information
 check out the website at [www.cc2asn.com][1].
 
-This branch (`dev`) holds the newest state of the project: the pipeline runs on
+This repository holds the newest state of the project: the pipeline runs on
 an AWS Lambda python3.14 runtime, and the data is additionally served by a new
 web API (Lambda Web Adapter + Function URL) with whois-compatible semantics,
 free latest-day lookups, and token-gated historic lookups (data back to 2019).
