@@ -126,6 +126,21 @@ checks:
 
     make build && make CONFIRM_DEPLOY=yes deploy
 
+   Note: `deploy` updates **code only**. When adding the whois bridge,
+   the `CC2ASN_BRIDGE_SECRET` env var must be set on the live function
+   separately — and `--environment`/`update-function-configuration`
+   **replaces all variables**, so pass the full set:
+
+    aws lambda update-function-configuration --region eu-west-1 \
+        --function-name CC2ASN-api \
+        --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap,PORT=8080,CC2ASN_DB_BUCKET=cc2asn-db,CC2ASN_TOKENS_TABLE=cc2asn-tokens,CC2ASN_BRIDGE_SECRET=<secret or comma-separated pair during rotation>}"
+
+   Until `CC2ASN_BRIDGE_SECRET` is set on the live function, bridge
+   deployment is **silently limp**: queries still work but every bridged
+   user shares the bridge VM's one anonymous rate-limit bucket and the
+   latest log records the VM IP with `src=http`. Watch `/cc2asn/api/latest`
+   for `src=tcp43` after cutover — its absence is the tell.
+
 6. Smoke test (`FUNCTION_URL` from step 4): banner, `/NO`, historic
    401 without token, historic 200 with token, malformed date 404.
    Then issue a real token with `scripts/issue_token.py` and verify quota

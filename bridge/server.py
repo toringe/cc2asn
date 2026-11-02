@@ -65,10 +65,11 @@ class BridgeServer(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
     def __init__(self, addr, api_base, secret, querylog, RequestHandlerClass,
-                 bind_and_activate=True):
+                 bind_and_activate=True, idle_timeout=5.0):
         self.api_base = api_base
         self.secret = secret
         self.querylog = querylog
+        self.idle_timeout = idle_timeout  # None disables (tests only)
         super().__init__(addr, RequestHandlerClass, bind_and_activate)
 
 
@@ -76,10 +77,17 @@ class BridgeRequestHandler(socketserver.BaseRequestHandler):
 
     # Each time a client connects, a new instance of this class is created.
     def handle(self):
-        # Receive up to the same byte count the legacy server reads
+        # Idle hardening the legacy server never had: a connection that
+        # sends nothing within the timeout is reaped (logged INVALID) and
+        # its thread freed. Invisible to whois/nc clients, which send
+        # immediately; pins nothing for an attacker.
+        if self.server.idle_timeout is not None:
+            self.request.settimeout(self.server.idle_timeout)
         try:
             sockdata = self.request.recv(LEGACY_RECV_BYTES)
         except OSError:
+            # includes the reaped idle timeout and client-side resets
+            self.logclient(self.client_address[0], '-', '-', 'INVALID')
             return
 
         client = self.client_address[0]
@@ -127,14 +135,15 @@ def make_query_logger(path, max_bytes=10 * 1024 * 1024, backups=5):
     return querylog
 
 
-def make_server(addr, api_base, secret, querylog=None):
+def make_server(addr, api_base, secret, querylog=None, idle_timeout=5.0):
     """Factory: journald-backed query logger when no file logger is given."""
     if querylog is None:
         querylog = logging.getLogger('cc2asn-bridge.query')
         if not querylog.handlers:
             querylog.addHandler(logging.StreamHandler())  # stderr → journald
         querylog.setLevel(logging.INFO)
-    return BridgeServer(addr, api_base, secret, querylog, BridgeRequestHandler)
+    return BridgeServer(addr, api_base, secret, querylog, BridgeRequestHandler,
+                        idle_timeout=idle_timeout)
 
 
 def load_config(path):

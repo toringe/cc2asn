@@ -7,6 +7,10 @@ Wants=network-online.target
 Type=simple
 User=cc2asn
 Group=cc2asn
+# Unprivileged user, privileged port: the only capability the service needs
+# is binding 43. Without this, bind() raises PermissionError as User=cc2asn.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ExecStart=/usr/bin/python3 /opt/cc2asn-bridge/server.py --config /etc/cc2asn-bridge.conf
 Restart=always
 RestartSec=5

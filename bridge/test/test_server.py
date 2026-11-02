@@ -190,5 +190,52 @@ class QueryLogTest(BridgeFixture):
             line, r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} 127\.0\.0\.1 ASN ZZ 404$")
 
 
+class IdleConnectionTest(BridgeFixture):
+    """Idle connections must be reaped (thread exhaustion hardening).
+
+    Legacy relies on a blocking recv with no timeout; on a 1 GB VM facing
+    the internet, one quiet connection per thread is a cheap DoS. The
+    bridge adds an idle timeout the legacy server never needed.
+    """
+
+    API_ROUTES = {"/ASN/FI": (200, b"AS1\n")}
+
+    def test_idle_silent_connection_is_reaped_and_service_stays_up(self):
+        import time as _time
+        FakeAPIHandler.routes = dict(self.API_ROUTES)
+        tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
+        logger = make_query_logger(os.path.join(tmpdir, "q.log"))
+        self.server = make_server(("127.0.0.1", 0), self._fake_api, SECRET,
+                                  idle_timeout=0.5, querylog=logger)
+        self.server_thread = __import__("threading").Thread(
+            target=self.server.serve_forever, daemon=True)
+        self.server_thread.start()
+        self.query = Query(self.server)
+        self.addCleanup(self.shutdown)
+
+        idle = socket.create_connection(self.server.server_address, timeout=10)
+        idle.sendall(b"")  # connect quietly, send nothing
+        deadline = _time.monotonic() + 3.0
+        logged = []
+        while _time.monotonic() < deadline:
+            try:
+                with open(os.path.join(tmpdir, "q.log")) as fh:
+                    logged = fh.read().strip().splitlines()
+            except FileNotFoundError:
+                pass
+            if any(line.endswith("INVALID") and " 127.0.0.1 - - " in line
+                   for line in logged):
+                break
+            _time.sleep(0.1)
+        idle.close()
+
+        self.assertTrue(
+            any(" 127.0.0.1 - - INVALID" in line for line in logged),
+            msg=f"idle connection was never reaped: {logged}")
+        # The service still answers other clients meanwhile.
+        self.assertEqual(self.query(b"fi\r\n"), b"AS1\n")
+
+
 if __name__ == "__main__":
     unittest.main()

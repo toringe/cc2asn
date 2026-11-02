@@ -83,13 +83,20 @@ class WhoisHandler(BaseHTTPRequestHandler):
         can never forge the compare, so XFF stays untrusted for them.
         """
         header = self.headers.get("Authorization")
-        secret = self.deps.config.bridge_secret
-        if not header or not secret:
+        secrets = [s.strip() for s in self.deps.config.bridge_secret.split(",") if s.strip()]
+        if not header or not secrets:
             return False
         parts = header.split(" ")
         if len(parts) != 2 or parts[0].lower() != "bearer":
             return False
-        return hmac.compare_digest(parts[1], secret)
+        try:
+            token = parts[1].encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        # Comma-separated accept-list (secretless-rotation support: during
+        # rollover old+new are both trusted). Every entry is compared
+        # constant-time; non-ASCII junk degrades to "no match", never a 500.
+        return any(hmac.compare_digest(token, s.encode("utf-8")) for s in secrets)
 
     def _client_ip(self) -> str:
         # Behind the adapter the trusted caller identity arrives in

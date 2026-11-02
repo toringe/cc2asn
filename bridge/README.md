@@ -75,9 +75,11 @@ tighten by deleting `default-allow-ssh` once IAP-only access is confirmed).
     sudo mkdir -p /opt/cc2asn-bridge /var/log/cc2asn
     sudo chown cc2asn:cc2asn /var/log/cc2asn
 
-    # code (or: cd bridge && make scp, after the project/zone are gcloud-selected)
+    # code (or: cd bridge && make scp, after the project/zone are gcloud-selected).
+    # All installs go through sudo (OS Login users have it) and land as
+    # cc2asn-owned so the service user can traverse/read them.
     gcloud compute scp --zone us-east1-b server.py lib/api.py cc2asn-bridge:/tmp
-    gcloud compute ssh --zone us-east1-b cc2asn-bridge --command "\sh -c 'install -d -m 750 /opt/cc2asn-bridge/lib && install -m 750 /tmp/server.py /opt/cc2asn-bridge/server.py && install -m 750 /tmp/api.py /opt/cc2asn-bridge/lib/api.py'"
+    gcloud compute ssh --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -d -o cc2asn -g cc2asn -m 750 /opt/cc2asn-bridge && sudo install -d -o cc2asn -g cc2asn -m 750 /opt/cc2asn-bridge/lib && sudo install -o cc2asn -g cc2asn -m 640 /tmp/server.py /opt/cc2asn-bridge/server.py && sudo install -o cc2asn -g cc2asn -m 640 /tmp/api.py /opt/cc2asn-bridge/lib/api.py'"
 
     # conf — holds the secret, by hand:
     gcloud compute scp --zone us-east1-b cc2asn-bridge.conf cc2asn-bridge:/tmp
@@ -113,14 +115,24 @@ Conf/secret changes are manual: edit `/etc/cc2asn-bridge.conf` on the VM, then
 
 ## Secret rotation
 
+`CC2ASN_BRIDGE_SECRET` accepts a comma-separated list on the API side, so
+rotation overlaps: both secrets are trusted during the switchover and no
+query degrades. If the two sides ever disagree, queries do NOT fail — they
+silently degrade to anonymous direct-traffic treatment (logged `src=http` at
+the bridge VM's IP, all users in one shared rate-limit bucket), so verify
+with the `/cc2asn/api/latest` `tcp43` marker before shortening the list.
+
 1. Generate a new secret.
-2. Update `CC2ASN_BRIDGE_SECRET` (Lambda env) and redeploy/restart the API —
-   then BOTH secrets are needed briefly (accept old bridge + new lambda order
-   can go either way; the mismatch window is a single lookup's 4xx silence).
-3. Put the new secret in `/etc/cc2asn-bridge.conf` on the VM, `make restart`.
-4. Watch `/cc2asn/api/latest` for a clean stretch of `tcp43` lines before
-   dropping step 2's dual meaning — put simply: rollout API-side first, then
-   VM-side; a bridged client sees silence only if BOTH sides disagree.
+2. Lambda env: `CC2ASN_BRIDGE_SECRET=<old>,<new>` (full variable list — see
+   `api/README.md` step 5's update-function-configuration command).
+3. VM conf: set `BRIDGE_SECRET = <new>` in `/etc/cc2asn-bridge.conf`,
+   then `make restart`.
+4. Verify `src=tcp43` lines flow with `<new>` on both sides, then set the
+   Lambda env to `<new>` alone.
+
+Ordering matters: API-side FIRST (step 2 before 3), never the reverse —
+the API accepting only a secret the VM does not yet send degrades the bridge
+without an error.
 
 ## Retirement (the exit — the design's whole point)
 

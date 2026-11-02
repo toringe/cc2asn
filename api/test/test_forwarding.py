@@ -115,6 +115,59 @@ class ForwardingTest(unittest.TestCase):
         ip, _ = self.logged_ip_and_src(log)
         self.assertEqual(ip, "198.51.100.50")
 
+    def test_accept_list_of_secrets(self):
+        # Rotation support: CC2ASN_BRIDGE_SECRET is a comma-separated list;
+        # during rotation both the outgoing and the incoming secret are
+        # trusted, so no query ever degrades to a shared anonymous bucket.
+        log = RecordingLatestLog()
+        d = deps(secret="old-secret,new-secret", latest_log=log)
+        for secret in ("old-secret", "new-secret"):
+            status, _ = self.get(d, "/NO", headers={
+                "Authorization": "Bearer " + secret,
+                "X-Forwarded-For": "203.0.113.20",
+                "x-amzn-request-context": json.dumps(self.CONTEXT),
+            })
+            self.assertEqual(status, status_ok := 200, msg=secret)
+            ip, src = self.logged_ip_and_src(log)
+            self.assertEqual(ip, "203.0.113.20")
+            self.assertEqual(src, "src=tcp43")
+
+    def test_accept_list_still_rejects_unknown_secret(self):
+        log = RecordingLatestLog()
+        d = deps(secret="old-secret,new-secret", latest_log=log)
+        self.get(d, "/NO", headers={
+            "Authorization": "Bearer other",
+            "X-Forwarded-For": "203.0.113.21",
+            "x-amzn-request-context": json.dumps(self.CONTEXT),
+        })
+        ip, src = self.logged_ip_and_src(log)
+        self.assertEqual(ip, "198.51.100.50")
+        self.assertEqual(src, "src=http")
+
+    def test_accept_list_ignores_blank_entries_and_spaces(self):
+        log = RecordingLatestLog()
+        d = deps(secret=" good-secret ,,, ", latest_log=log)
+        self.get(d, "/NO", headers={"Authorization": "Bearer good-secret",
+                                    "X-Forwarded-For": "203.0.113.22"})
+        ip, src = self.logged_ip_and_src(log)
+        self.assertEqual(ip, "203.0.113.22")
+        self.assertEqual(src, "src=tcp43")
+
+    def test_non_ascii_authorization_is_ignored_not_500(self):
+        # An attacker-proof (and practically occurring, e.g. shell junk)
+        # latin-1 header must not crash hmac.compare_digest into a 500.
+        # Real behavior requested: treat it like any non-matching secret.
+        log = RecordingLatestLog()
+        d = deps(latest_log=log)
+        status, _ = self.get(d, "/NO", headers={
+            "Authorization": "Bearer caf\xe9",  # latin-1 'é'
+            "x-amzn-request-context": json.dumps(self.CONTEXT),
+        })
+        self.assertEqual(status, 200)
+        ip, src = self.logged_ip_and_src(log)
+        self.assertEqual(ip, "198.51.100.50")
+        self.assertEqual(src, "src=http")
+
     def test_bridge_xff_wins_over_adapter_context(self):
         # The bridge's forwarded user IP beats the adapter context (which
         # would name the bridge VM), even in production.
