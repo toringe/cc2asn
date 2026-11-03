@@ -1,4 +1,4 @@
-"""CC2ASN WHOIS-WEB API: a stdlib HTTP server exposing cc2asn-db data."""
+"""CC2ASN WEB API: a stdlib HTTP server exposing cc2asn-db data."""
 
 import json
 import hmac
@@ -13,14 +13,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from lib.config import Config, load
 from lib.querylog import historic_line, legacy_line
 from lib.ratelimit import RateLimiter
-from lib.s3data import DataStore, historic_key, latest_key
+from lib.s3data import DataStore
 from lib.tokens import TokenStore
 from lib.whois import parse_query, render_json, render_plain
 
 logger = logging.getLogger("cc2asn.api")
 
 BANNER = (
-    "CC2ASN WHOIS-WEB API. Query: /{CC} or /{TYPE}/{CC}. "
+    "CC2ASN WEB API. Query: /{CC} or /{TYPE}/{CC}. "
     "Historic: /{YYYY-MM-DD}/... (token required).\n"
 )
 
@@ -191,11 +191,7 @@ class WhoisHandler(BaseHTTPRequestHandler):
                 return
             body = self.deps.store.get_latest(query.rectype, query.cc)
             if body is None:
-                self._send(
-                    404,
-                    f"Missing data: {latest_key(query.rectype, query.cc)}\n",
-                    "text/plain; charset=utf-8",
-                )
+                self._send(404, f"Not found: {path}\n", "text/plain; charset=utf-8")
                 return
             source = self.deps.store.last_source or "s3"
         else:
@@ -214,12 +210,7 @@ class WhoisHandler(BaseHTTPRequestHandler):
                 return
             body = self.deps.store.get_historic(query.date, query.rectype, query.cc)
             if body is None:
-                key = historic_key(query.date, query.rectype, query.cc)
-                self._send(
-                    404,
-                    f"Missing data: {key}\n",
-                    "text/plain; charset=utf-8",
-                )
+                self._send(404, f"Not found: {path}\n", "text/plain; charset=utf-8")
                 return
             source = "s3"
             tier = item.get("tier", "standard")

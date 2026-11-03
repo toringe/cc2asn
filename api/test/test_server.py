@@ -113,7 +113,7 @@ class TestServerRouting(ServerFixture):
     def test_banner(self):
         status, _, body = self.get(self.deps, "/")
         self.assertEqual(status, 200)
-        self.assertIn("CC2ASN WHOIS-WEB API", body)
+        self.assertIn("CC2ASN WEB API", body)
 
     def test_lowercase_country_code(self):
         status_lower, _, body_lower = self.get(self.deps, "/no")
@@ -132,9 +132,12 @@ class TestServerRouting(ServerFixture):
         self.assertEqual(payload["records"], ["AS224", "AS2116"])
 
     def test_latest_missing_returns_404(self):
+        # Unknown-format paths and valid-format-but-absent data both read
+        # "Not found"; unknown CCs must NOT surface as 500 Internal error
+        # (see the AccessDenied-on-missing-key quirk in lib/s3data.py).
         status, _, body = self.get(good_deps(), "/US")
         self.assertEqual(status, 404)
-        self.assertEqual(body, "Missing data: latest/US_ASN\n")
+        self.assertEqual(body, "Not found: /US\n")
 
     def test_data_date_header_latest_and_historic(self):
         _, headers, _ = self.get(self.deps, "/NO")
@@ -295,7 +298,7 @@ class TestServerRouting(ServerFixture):
             self.deps, "/2020-01-03/US", headers={"Authorization": "Bearer good"}
         )
         self.assertEqual(status, 404)
-        self.assertEqual(body, "Missing data: 2020/01/03/US_ASN\n")
+        self.assertEqual(body, "Not found: /2020-01-03/US\n")
 
 
 if __name__ == "__main__":
