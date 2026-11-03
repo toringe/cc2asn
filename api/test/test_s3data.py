@@ -82,14 +82,35 @@ class TestMissingObject(unittest.TestCase):
 
         client.exceptions = MagicMock()
         client.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})
+        client.exceptions.AccessDenied = type("AccessDenied", (Exception,), {})  # new: typed catch member
         client.get_object.side_effect = raise_nosuchkey
         store = DataStore("bkt", client=client)
         self.assertIsNone(store.get_latest("ASN", "NO"))
+
+    def test_accessdenied_on_missing_key_returns_none(self):
+        # S3's REST API answers a GetObject for a nonexistent key with
+        # AccessDenied (403) when the caller lacks s3:ListBucket — the
+        # read-only role never gets it, so S3 cannot confirm the key
+        # exists. Missing data must degrade to None, not raise.
+        client = make_client()
+
+        def raise_accessdenied(**kwargs):
+            raise client.exceptions.AccessDenied(
+                {"Error": {"Code": "AccessDenied", "Message": "access denied"}}, "GetObject")
+
+        client.exceptions = MagicMock()
+        client.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})
+        client.exceptions.AccessDenied = type("AccessDenied", (Exception,), {})
+        client.get_object.side_effect = raise_accessdenied
+        store = DataStore("bkt", client=client)
+        self.assertIsNone(store.get_latest("ASN", "NV"))
+        self.assertIsNone(store.get_historic("2026-11-03", "ASN", "NV"))
 
     def test_other_client_error_propagates(self):
         client = make_client()
         client.exceptions = MagicMock()
         client.exceptions.NoSuchKey = type("NoSuchKey", (Exception,), {})  # typed catch must keep working
+        client.exceptions.AccessDenied = type("AccessDenied", (Exception,), {})  # new: typed catch member
         other = type("SomeOtherError", (Exception,), {})
         client.get_object.side_effect = other({}, "boom")
         store = DataStore("bkt", client=client)

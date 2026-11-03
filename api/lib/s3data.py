@@ -39,7 +39,12 @@ class DataStore:
         try:
             with client.get_object(Bucket=self.bucket, Key=key)["Body"] as body:
                 data = body.read()
-        except client.exceptions.NoSuchKey:
+        except (client.exceptions.NoSuchKey, client.exceptions.AccessDenied):
+            # AccessDenied doubles as "no such key" here: without s3:ListBucket,
+            # S3 cannot confirm a key's existence and answers a GET of a
+            # nonexistent object with 403 instead of NoSuchKey (verified live
+            # 2026-11-03 via the /NV traceback). Other client errors (bad
+            # credentials, throttling, wrong bucket) still propagate as 500.
             return None
         return data.decode("utf-8")
 

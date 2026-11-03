@@ -70,7 +70,7 @@ deploy-create:
 		--handler run.sh \
 		--layers $(LAYER_ARN):$(LAYER_VERSION) \
 		--zip-file fileb://build/$(FUNCTION).zip \
-		--environment Variables="{AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap,PORT=8080,CC2ASN_DB_BUCKET=cc2asn-db,CC2ASN_TOKENS_TABLE=cc2asn-tokens}"
+		--environment Variables="{AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap,PORT=8080,CC2ASN_DB_BUCKET=cc2asn-db,CC2ASN_TOKENS_TABLE=cc2asn-tokens,CC2ASN_BRIDGE_SECRET=$(or $(CC2ASN_BRIDGE_SECRET),SET-ME-BRIDGE-SECRET),CC2ASN_PROXY_SECRET=$(or $(CC2ASN_PROXY_SECRET),)}"
 	aws lambda create-function-url-config \
 		--region=$(REGION) \
 		--function-name $(FUNCTION) \

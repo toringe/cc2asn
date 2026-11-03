@@ -1,0 +1,26 @@
+[Unit]
+Description=CC2ASN whois-web API bridge (TCP 43 -> HTTPS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cc2asn
+Group=cc2asn
+# Unprivileged user, privileged port: the only capability the service needs
+# is binding 43. Without this, bind() raises PermissionError as User=cc2asn.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+ExecStart=/usr/bin/python3 /opt/cc2asn-bridge/server.py --config /etc/cc2asn-bridge.conf
+Restart=always
+RestartSec=5
+
+# Hardening: the service binds 43 and writes one log file; nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log/cc2asn
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

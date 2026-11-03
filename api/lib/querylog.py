@@ -10,10 +10,15 @@ import datetime
 from time import localtime, strftime, time  # noqa: F401  (kept minimal import surface)
 
 
-def legacy_line(ts: datetime.datetime, ip: str, rectype: str, cc: str) -> str:
+def legacy_line(
+    ts: datetime.datetime, ip: str, rectype: str, cc: str, src: str | None = None
+) -> str:
     if ts.tzinfo is not None:
         ts = ts.astimezone(datetime.timezone.utc)
-    return ts.strftime("%Y-%m-%d %H:%M:%S") + f" {ip} {rectype} {cc}"
+    line = ts.strftime("%Y-%m-%d %H:%M:%S") + f" {ip} {rectype} {cc}"
+    if src:
+        line += f" src={src}"
+    return line
 
 
 def historic_line(
