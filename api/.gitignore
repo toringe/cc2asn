@@ -2,3 +2,4 @@ build/
 *.bkp
 __pycache__/
 .DS_Store
+cloudfront-distribution.live.json

@@ -168,14 +168,20 @@ checks:
       Add the returned validation CNAME in Cloudflare (DNS only). Then:
         aws acm list-certificates --region us-east-1 --query "CertificateSummaryList[?DomainName=='api.cc2asn.com'].CertificateArn"
 
-   c. Fill `cloudfront-distribution.json` (same directory): Function
-      URL host, ACM ARN, proxy secret. Verify the managed policy IDs
-      are still the current ones (read-only):
-        aws cloudfront list-cache-policies --query "CachePolicyList.Items[?starts_with(CachePolicy.Comment,'CachingDisabled')].Id"
-        aws cloudfront list-origin-request-policies --query "OriginRequestPolicyList.Items[?starts_with(OriginRequestPolicy.Comment,'Managed-AllViewerExceptHostHeader')].Id"
+   c. Copy the committed template to the **gitignored live copy** and
+      fill it — the committed `cloudfront-distribution.json` stays
+      placeholder-clean (`CachePolicyId` is pinned to this account's
+      verified `Managed-CachingDisabled` id; look the other three up
+      if the account changes):
+
+        cp cloudfront-distribution.json cloudfront-distribution.live.json
+        # edit cloudfront-distribution.live.json: Function URL host (no
+        # https://), ACM ARN, proxy secret, and OriginRequestPolicyId —
+        #   aws cloudfront list-origin-request-policies --type managed --output json
+        # (pick Managed-AllViewerExceptHostHeader)
 
    d. Create the distribution (takes a few minutes to deploy):
-        aws cloudfront create-distribution --distribution-config file://cloudfront-distribution.json
+        aws cloudfront create-distribution --distribution-config file://cloudfront-distribution.live.json
       Capture `DomainName` (`d<id>.cloudfront.net`) from the response.
 
    e. Cloudflare: `api` CNAME → `d<id>.cloudfront.net`, **DNS only**

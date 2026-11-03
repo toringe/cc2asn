@@ -9,7 +9,7 @@
     "Items": [
       {
         "Id": "lambda-func-url",
-        "DomainName": "reiumywqhjf7d5essqbmlwpmfi0xiftu.lambda-url.eu-west-1.on.aws",
+        "DomainName": "REPLACE-WITH-function-url-host.lambda-url.eu-west-1.on.aws",
         "OriginPath": "",
         "CustomOriginConfig": {
           "HTTPPort": 80,
@@ -22,7 +22,7 @@
           "Items": [
             {
               "HeaderName": "X-CC2ASN-Proxy",
-              "HeaderValue": "4ad9e1d8e01f7727ab5eec3b31f69d7d86fac0b9245aa7d8b2b2627017871ff4"
+              "HeaderValue": "REPLACE-WITH-PROXY-SECRET"
             }
           ]
         }
@@ -32,8 +32,8 @@
   "DefaultCacheBehavior": {
     "TargetOriginId": "lambda-func-url",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-8615920a1eff",
-    "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+    "OriginRequestPolicyId": "REPLACE-WITH-Managed-AllViewerExceptHostHeader-Id",
     "Compress": false
   },
   "CustomErrorResponses": { "Quantity": 0 },
@@ -42,7 +42,7 @@
   "Enabled": true,
   "PriceClass": "PriceClass_100",
   "ViewerCertificate": {
-    "ACMCertificateArn": "arn:aws:acm:us-east-1:719411478741:certificate/3730acb1-c0be-4f13-962d-105cf024f890",
+    "ACMCertificateArn": "REPLACE-WITH-ACM-ARN-us-east-1",
     "SSLSupportMethod": "sni-only",
     "MinimumProtocolVersion": "TLSv1.2_2021",
     "CertificateSource": "acm"
