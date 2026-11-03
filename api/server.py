@@ -83,20 +83,40 @@ class WhoisHandler(BaseHTTPRequestHandler):
         can never forge the compare, so XFF stays untrusted for them.
         """
         header = self.headers.get("Authorization")
-        secrets = [s.strip() for s in self.deps.config.bridge_secret.split(",") if s.strip()]
-        if not header or not secrets:
+        secret = self.deps.config.bridge_secret
+        if not header or not secret:
             return False
         parts = header.split(" ")
         if len(parts) != 2 or parts[0].lower() != "bearer":
             return False
-        try:
-            token = parts[1].encode("utf-8")
-        except UnicodeEncodeError:
-            return False
+        return self._matches_accept_list(parts[1], secret)
+
+    @staticmethod
+    def _matches_accept_list(token: str, accept_list: str) -> bool:
         # Comma-separated accept-list (secretless-rotation support: during
         # rollover old+new are both trusted). Every entry is compared
-        # constant-time; non-ASCII junk degrades to "no match", never a 500.
-        return any(hmac.compare_digest(token, s.encode("utf-8")) for s in secrets)
+        # constant-time; non-ASCII junk (latin-1-decoded headers,
+        # attacker-provided or shell junk) degrades to "no match", never a 500.
+        try:
+            token_b = token.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return any(
+            hmac.compare_digest(token_b, s.strip().encode("utf-8"))
+            for s in accept_list.split(",") if s.strip()
+        )
+
+    def _is_proxy(self) -> bool:
+        # CloudFront-fronted requests carry the distribution's fixed origin
+        # header as proof of the front door (set in distribution config, not
+        # visible to clients). Its own header name — never Authorization —
+        # so it cannot collide with the historic Bearer-token auth that the
+        # viewer's Authorization header carries.
+        secret = self.deps.config.proxy_secret
+        if not secret:
+            return False
+        given = self.headers.get("X-CC2ASN-Proxy")
+        return bool(given) and self._matches_accept_list(given, secret)
 
     def _client_ip(self) -> str:
         # Behind the adapter the trusted caller identity arrives in
@@ -110,6 +130,14 @@ class WhoisHandler(BaseHTTPRequestHandler):
         # say "the bridge VM's IP". Bridge XFF resolution deliberately skips
         # the adapter context (the whole point is per-user logging/limits).
         if self._is_bridge():
+            forwarded = self.headers.get("X-Forwarded-For")
+            if forwarded:
+                return forwarded.split(",")[-1].strip()
+        # CloudFront-fronted web requests are the other exception: CloudFront
+        # appends the viewer IP as the LAST XFF entry (the trusted final
+        # hop), and the proxy secret proves the front door. Same resolution
+        # shape as the bridge — last entry; both trusts live in _client_ip().
+        if self._is_proxy():
             forwarded = self.headers.get("X-Forwarded-For")
             if forwarded:
                 return forwarded.split(",")[-1].strip()
@@ -136,11 +164,6 @@ class WhoisHandler(BaseHTTPRequestHandler):
             logger.warning("Query log write failed", exc_info=True)
 
     def _route_get(self):
-        if self.path.split("?", 1)[0] == "/__hdr":
-            # TEMPORARY header probe (removed with next deploy)
-            hdrs = {k.lower(): v for k, v in self.headers.items()}
-            self._send(200, repr(hdrs), "text/plain; charset=utf-8")
-            return
         start = time.monotonic()
         today = date.today().isoformat()
         path = self.path

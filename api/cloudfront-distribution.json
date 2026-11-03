@@ -1,0 +1,51 @@
+{
+  "CallerReference": "cc2asn-api-alias-2026-11-03",
+  "Aliases": {
+    "Quantity": 1,
+    "Items": ["api.cc2asn.com"]
+  },
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "lambda-func-url",
+        "DomainName": "REPLACE-WITH-function-url-host.lambda-url.eu-west-1.on.aws",
+        "OriginPath": "",
+        "CustomOriginConfig": {
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "https-only",
+          "OriginSslProtocols": { "Quantity": 1, "Items": ["TLSv1.2"] }
+        },
+        "OriginCustomHeaders": {
+          "Quantity": 1,
+          "Items": [
+            {
+              "HeaderName": "X-CC2ASN-Proxy",
+              "HeaderValue": "REPLACE-WITH-PROXY-SECRET"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "lambda-func-url",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "CachePolicyId": "4135ea2d-6df8-44a3-9df3-8615920a1eff",
+    "OriginRequestPolicyId": "b689b0a8-53d0-40ab-baf2-68738e2966ac",
+    "Compress": false
+  },
+  "CustomErrorResponses": { "Quantity": 0 },
+  "Comment": "cc2asn api.cc2asn.com alias for CC2ASN-api Lambda Function URL",
+  "Logging": { "Enabled": false, "Bucket": "" },
+  "Enabled": true,
+  "PriceClass": "PriceClass_100",
+  "ViewerCertificate": {
+    "ACMCertificateArn": "REPLACE-WITH-ACM-ARN-us-east-1",
+    "SSLSupportMethod": "sni-only",
+    "MinimumProtocolVersion": "TLSv1.2_2021",
+    "CertificateSource": "acm"
+  },
+  "GeoRestriction": { "RestrictionType": "none", "Quantity": 0 }
+}

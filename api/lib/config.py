@@ -14,6 +14,7 @@ class Config:
     rate_per_day: int = 300
     cache_ttl: int = 300
     bridge_secret: str = ""
+    proxy_secret: str = ""
     log_group_latest: str = "/cc2asn/api/latest"
     log_group_historic: str = "/cc2asn/api/historic"
 
@@ -29,6 +30,7 @@ _STR_VARS = {
     "CC2ASN_DB_BUCKET": "bucket",
     "CC2ASN_TOKENS_TABLE": "table",
     "CC2ASN_BRIDGE_SECRET": "bridge_secret",
+    "CC2ASN_PROXY_SECRET": "proxy_secret",
     "CC2ASN_LOG_GROUP_LATEST": "log_group_latest",
     "CC2ASN_LOG_GROUP_HISTORIC": "log_group_historic",
 }
