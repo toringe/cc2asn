@@ -61,11 +61,22 @@ Requires the `gcloud` CLI, a fresh project, and the free-tier region
     gcloud compute firewall-rules create allow-whois-43 \
         --allow=tcp:43 --source-ranges=0.0.0.0/0
 
+    # SSH over IAP only: a new project's default network comes with
+    # default-allow-ssh (tcp:22 open to 0.0.0.0/0) — delete it, and
+    # allow 22 just from the IAP source range (access stays IAM/OS-Login-gated).
+    gcloud compute firewall-rules create allow-ingress-from-iap \
+        --direction=INGRESS --action=allow --rules=tcp:22 \
+        --source-ranges=35.235.240.0/20
+    gcloud compute firewall-rules delete default-allow-ssh
+
 Free-tier guardrails: region in {us-east1, us-central1, us-west1}, e2-micro,
 boot disk <= 30 GiB (10 GB here), connected static IP, egress < 1 GiB/month
 (COUNTRY_ALL bodies are small; at real whois traffic this holds extremely
-easily). ssh uses OS Login + IAP (port 22 stays on the default SSH rule;
-tighten by deleting `default-allow-ssh` once IAP-only access is confirmed).
+easily). SSH is OS Login + IAP only: `default-allow-ssh` was deleted
+2026-11-03 and port 22 accepts just the IAP source range via the
+`allow-ingress-from-iap` rule (access is still IAM-gated by OS Login). Every
+`gcloud compute ssh`/`compute scp` below carries `--tunnel-through-iap` —
+with an external IP present, gcloud tries the public IP first without it.
 
 ## VM software setup (one-time)
 
@@ -78,16 +89,16 @@ tighten by deleting `default-allow-ssh` once IAP-only access is confirmed).
     # code (or: cd bridge && make scp, after the project/zone are gcloud-selected).
     # All installs go through sudo (OS Login users have it) and land as
     # cc2asn-owned so the service user can traverse/read them.
-    gcloud compute scp --zone us-east1-b server.py lib/api.py cc2asn-bridge:/tmp
-    gcloud compute ssh --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -d -o cc2asn -g cc2asn -m 750 /opt/cc2asn-bridge && sudo install -d -o cc2asn -g cc2asn -m 750 /opt/cc2asn-bridge/lib && sudo install -o cc2asn -g cc2asn -m 640 /tmp/server.py /opt/cc2asn-bridge/server.py && sudo install -o cc2asn -g cc2asn -m 640 /tmp/api.py /opt/cc2asn-bridge/lib/api.py'"
+    gcloud compute scp --tunnel-through-iap --zone us-east1-b server.py lib/api.py cc2asn-bridge:/tmp
+    gcloud compute ssh --tunnel-through-iap --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -d -o cc2asn -g cc2asn -m 750 /opt/cc2asn-bridge && sudo install -d -o cc2asn -g cc2asn -m 750 /opt/cc2asn-bridge/lib && sudo install -o cc2asn -g cc2asn -m 640 /tmp/server.py /opt/cc2asn-bridge/server.py && sudo install -o cc2asn -g cc2asn -m 640 /tmp/api.py /opt/cc2asn-bridge/lib/api.py'"
 
     # conf — holds the secret, by hand:
-    gcloud compute scp --zone us-east1-b cc2asn-bridge.conf cc2asn-bridge:/tmp
-    gcloud compute ssh --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -m 640 -o cc2asn -g cc2asn /tmp/cc2asn-bridge.conf /etc/cc2asn-bridge.conf'"
+    gcloud compute scp --tunnel-through-iap --zone us-east1-b cc2asn-bridge.conf cc2asn-bridge:/tmp
+    gcloud compute ssh --tunnel-through-iap --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -m 640 -o cc2asn -g cc2asn /tmp/cc2asn-bridge.conf /etc/cc2asn-bridge.conf'"
 
     # systemd unit
-    gcloud compute scp --zone us-east1-b cc2asn-bridge.service cc2asn-bridge:/tmp
-    gcloud compute ssh --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -m 644 /tmp/cc2asn-bridge.service /etc/systemd/system/cc2asn-bridge.service && sudo systemctl daemon-reload && sudo systemctl enable --now cc2asn-bridge'"
+    gcloud compute scp --tunnel-through-iap --zone us-east1-b cc2asn-bridge.service cc2asn-bridge:/tmp
+    gcloud compute ssh --tunnel-through-iap --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -m 644 /tmp/cc2asn-bridge.service /etc/systemd/system/cc2asn-bridge.service && sudo systemctl daemon-reload && sudo systemctl enable --now cc2asn-bridge'"
 
 ## Deploy updates (from the repo, after `gcloud config set project cc2asn-bridge`)
 
