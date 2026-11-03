@@ -9,7 +9,7 @@
     "Items": [
       {
         "Id": "lambda-func-url",
-        "DomainName": "REPLACE-WITH-function-url-host.lambda-url.eu-west-1.on.aws",
+        "DomainName": "reiumywqhjf7d5essqbmlwpmfi0xiftu.lambda-url.eu-west-1.on.aws",
         "OriginPath": "",
         "CustomOriginConfig": {
           "HTTPPort": 80,
@@ -17,12 +17,12 @@
           "OriginProtocolPolicy": "https-only",
           "OriginSslProtocols": { "Quantity": 1, "Items": ["TLSv1.2"] }
         },
-        "OriginCustomHeaders": {
+        "CustomHeaders": {
           "Quantity": 1,
           "Items": [
             {
               "HeaderName": "X-CC2ASN-Proxy",
-              "HeaderValue": "REPLACE-WITH-PROXY-SECRET"
+              "HeaderValue": "4ad9e1d8e01f7727ab5eec3b31f69d7d86fac0b9245aa7d8b2b2627017871ff4"
             }
           ]
         }
@@ -42,10 +42,10 @@
   "Enabled": true,
   "PriceClass": "PriceClass_100",
   "ViewerCertificate": {
-    "ACMCertificateArn": "REPLACE-WITH-ACM-ARN-us-east-1",
+    "ACMCertificateArn": "arn:aws:acm:us-east-1:719411478741:certificate/3730acb1-c0be-4f13-962d-105cf024f890",
     "SSLSupportMethod": "sni-only",
     "MinimumProtocolVersion": "TLSv1.2_2021",
     "CertificateSource": "acm"
   },
-  "GeoRestriction": { "RestrictionType": "none", "Quantity": 0 }
+  "Restrictions": { "GeoRestriction": { "RestrictionType": "none", "Quantity": 0 } }
 }
