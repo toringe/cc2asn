@@ -4,3 +4,4 @@
 example-s3/
 .opencode/skills/
 .opencode/
+__pycache__/
