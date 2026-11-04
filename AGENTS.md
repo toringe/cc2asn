@@ -61,7 +61,8 @@ A complete, behavior-preserving Cloudflare implementation plan was produced and 
 
 **Git state (2026-11-04): open PR #3** (`dev` → `master`, github.com/toringe/cc2asn)
 carries all 2026-11-03 work (bridge, `api.cc2asn.com` alias, unknown-CC fix, docs);
-not merged yet. `dev` is pushed to origin through `07a8850`.
+not merged yet. `dev` is pushed to origin through the docs commit
+recorded below (verify with `git status -sb` / `gh pr view 3`).
 
 The cc2asn-db Web API is implemented and live (see "API status" above). Remaining
 follow-ups live in the design doc: the whois-to-API bridge design (retire the
