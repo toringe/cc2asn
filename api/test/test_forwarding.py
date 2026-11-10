@@ -28,10 +28,8 @@ def deps(secret=SECRET, latest_log=None, limiter=None):
     return Deps(
         config=Config(bridge_secret=secret),
         store=StubStore(data=DOCS),
-        tokens=None,
         limiter=limiter or RateLimiter(per_minute=1000, per_day=100000),
         latest_log=latest_log or RecordingLatestLog(),
-        historic_log=None,
     )
 
 

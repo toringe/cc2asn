@@ -53,6 +53,16 @@ class TestRateLimiter(unittest.TestCase):
         for ip, bucket in limiter._buckets.items():
             self.assertLessEqual(len(bucket["stamps"]), 3)  # only in-window stamps tallied
 
+    def test_daily_exhausted_reports_day_cap_only(self):
+        limiter = RateLimiter(per_minute=1, per_day=2)
+        limiter.allow("1.2.3.4", "2026-10-30", now=1000.0)
+        limiter.allow("1.2.3.4", "2026-10-30", now=1001.0)  # minute-limited
+        self.assertFalse(limiter.daily_exhausted("1.2.3.4", "2026-10-30"))
+        limiter.allow("1.2.3.4", "2026-10-30", now=1100.0)
+        self.assertTrue(limiter.daily_exhausted("1.2.3.4", "2026-10-30"))
+        self.assertFalse(limiter.daily_exhausted("1.2.3.4", "2026-10-31"))
+        self.assertFalse(limiter.daily_exhausted("9.9.9.9", "2026-10-30"))
+
 
 if __name__ == "__main__":
     unittest.main()

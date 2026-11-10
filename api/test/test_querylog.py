@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from lib.querylog import QueryLog, historic_line, legacy_line
+from lib.querylog import QueryLog, legacy_line
 
 import os
 
@@ -46,18 +46,6 @@ class TestLegacyLine(unittest.TestCase):
         self.assertEqual(
             legacy_line(ts, "141.101.104.69", "IPV4", "US"),
             "2026-11-01 13:04:51 141.101.104.69 IPV4 US",
-        )
-
-
-class TestHistoricLine(unittest.TestCase):
-    def test_legacy_prefix_plus_enrichment(self):
-        ts = datetime(2026, 11, 1, 13, 7, 2, tzinfo=UTC)
-        self.assertEqual(
-            historic_line(ts, "108.162.215.226", "ASN", "KE",
-                          date="2020-03-15", ms=6, source="s3", tier="standard",
-                          tok_prefix="c1a9b2c3"),
-            "2026-11-01 13:07:02 108.162.215.226 ASN KE "
-            "date=2020-03-15 status=200 ms=6 src=s3 tier=standard tok=c1a9b2c3",
         )
 
 

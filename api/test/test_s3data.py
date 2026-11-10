@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 from botocore.exceptions import ClientError  # noqa: F401  (re-exported error type in tests)
 
-from lib.s3data import DataStore, historic_key
+from lib.s3data import DataStore
 
 
 def make_client(body_text="AS224\nAS2116\n"):
@@ -25,17 +25,6 @@ class TestKeys(unittest.TestCase):
             Bucket="bkt", Key="latest/NO_ASN"
         )
 
-    def test_historic_key_exact(self):
-        store = DataStore("bkt", client=MagicMock())
-        store.get_historic("2026-10-27", "IPV4", "US")
-        store.client.get_object.assert_called_once_with(
-            Bucket="bkt", Key="2026/10/27/US_IPV4"
-        )
-
-    def test_historic_key_zero_padded(self):
-        self.assertEqual(historic_key("2026-03-05", "ASN", "SE"), "2026/03/05/SE_ASN")
-
-
     def test_last_source_reports_cache_and_s3(self):
         client = make_client()
         store = DataStore("bkt", cache_ttl=300, client=client)
@@ -43,6 +32,7 @@ class TestKeys(unittest.TestCase):
         self.assertEqual(store.last_source, "s3")
         store.get_latest("ASN", "NO")
         self.assertEqual(store.last_source, "cache")
+
 
 
 class TestLatestCache(unittest.TestCase):
@@ -61,15 +51,6 @@ class TestLatestCache(unittest.TestCase):
         store.get_latest("ASN", "NO")
         clock["t"] = 1301.0
         store.get_latest("ASN", "NO")
-        self.assertEqual(client.get_object.call_count, 2)
-
-
-class TestHistoricNoCache(unittest.TestCase):
-    def test_two_calls_hit_s3_twice(self):
-        client = make_client()
-        store = DataStore("bkt", client=client)
-        store.get_historic("2026-10-27", "IPV4", "US")
-        store.get_historic("2026-10-27", "IPV4", "US")
         self.assertEqual(client.get_object.call_count, 2)
 
 
@@ -104,7 +85,6 @@ class TestMissingObject(unittest.TestCase):
         client.get_object.side_effect = raise_accessdenied
         store = DataStore("bkt", client=client)
         self.assertIsNone(store.get_latest("ASN", "NV"))
-        self.assertIsNone(store.get_historic("2026-11-03", "ASN", "NV"))
 
     def test_other_client_error_propagates(self):
         client = make_client()

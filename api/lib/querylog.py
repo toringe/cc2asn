@@ -1,8 +1,8 @@
-"""Per-query log writing to the two dedicated CloudWatch query log groups.
+"""Per-query log writing to the dedicated CloudWatch query log group.
 
-Free latest-day lookups -> /cc2asn/api/latest  (legacy whois line format).
-Historic lookups        -> /cc2asn/api/historic (legacy prefix + enrichment).
-Operational events stay in the function's own group; failures here must
+Latest-day lookups -> /cc2asn/api/latest (legacy whois line format).
+(The /cc2asn/api/historic group is no longer written; historic lookups were
+withdrawn 2026-11-10.) Operational events stay in the function's own group; failures here must
 never break a served response (the server wraps writes defensively).
 """
 
@@ -19,23 +19,6 @@ def legacy_line(
     if src:
         line += f" src={src}"
     return line
-
-
-def historic_line(
-    ts: datetime.datetime,
-    ip: str,
-    rectype: str,
-    cc: str,
-    date: str,
-    ms: int,
-    source: str,
-    tier: str,
-    tok_prefix: str,
-) -> str:
-    return (
-        legacy_line(ts, ip, rectype, cc)
-        + f" date={date} status=200 ms={ms} src={source} tier={tier} tok={tok_prefix}"
-    )
 
 
 class QueryLog:
