@@ -45,7 +45,7 @@ build: check-freeze
 	rm -rf build
 	mkdir -p build/site-packages
 	zip -r build/$(FUNCTION).zip server.py run.sh lib -x "*__pycache__*"
-	cp -R $(SITE)/ build/site-packages
+	cp -R $(SITE)/. build/site-packages
 	cd build/site-packages; zip -g -r ../$(FUNCTION).zip . -x "*__pycache__*" -x "*test/*"
 	@unzip -l build/$(FUNCTION).zip | tail -1
 
