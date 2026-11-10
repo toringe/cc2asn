@@ -11,7 +11,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.bucket, "cc2asn-db")
         self.assertEqual(config.table, "cc2asn-tokens")
         self.assertEqual(config.rate_per_minute, 30)
-        self.assertEqual(config.rate_per_day, 300)
+        self.assertEqual(config.rate_per_day, 100)
         self.assertEqual(config.cache_ttl, 300)
 
     def test_overrides_are_read(self):
@@ -20,7 +20,7 @@ class TestConfig(unittest.TestCase):
             "CC2ASN_DB_BUCKET": "test-bucket",
             "CC2ASN_TOKENS_TABLE": "test-table",
             "RATE_PER_MINUTE": "10",
-            "RATE_PER_DAY": "100",
+            "RATE_PER_DAY": "50",
             "CACHE_TTL": "60",
         }
         config = load(env)
@@ -28,7 +28,7 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(config.bucket, "test-bucket")
         self.assertEqual(config.table, "test-table")
         self.assertEqual(config.rate_per_minute, 10)
-        self.assertEqual(config.rate_per_day, 100)
+        self.assertEqual(config.rate_per_day, 50)
         self.assertEqual(config.cache_ttl, 60)
 
     def test_invalid_integer_raises_value_error(self):

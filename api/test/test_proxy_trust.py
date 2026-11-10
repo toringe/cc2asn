@@ -7,8 +7,7 @@ config, never visible to clients). The API trusts the last XFF entry only
 when the proxy secret matches (constant-time compare) — direct public
 callers hitting the Function URL can never win it. Attribution semantics
 match the bridge trust: same `_client_ip()` path, but web traffic stays
-`src=http` (the tcp43 marker remains bridge-only). Historic lookups share
-the same resolution, so their enriched line shows the user IP as well.
+`src=http` (the tcp43 marker remains bridge-only).
 """
 
 import json
@@ -18,27 +17,19 @@ from server import Deps, create_server
 from lib.config import Config
 from lib.ratelimit import RateLimiter
 
-from test.test_server import (
-    StubStore,
-    StubTokens,
-    RecordingLatestLog,
-    RecordingHistoricLog,
-)
+from test.test_server import StubStore, RecordingLatestLog
 from test.test_forwarding import ForwardingTest
 
 PROXY = "pr0xy-s3cret"
-HISTORIC_DOCS = {"latest/NO_ASN": "AS224", "2020/01/02/US_ASN": "AS100"}
+DOCS = {"latest/NO_ASN": "AS224"}
 
 
-def deps(proxy=PROXY, latest_log=None, limiter=None, historic_log=None,
-         tokens=None):
+def deps(proxy=PROXY, latest_log=None, limiter=None):
     return Deps(
         config=Config(bridge_secret="s3kr3t", proxy_secret=proxy),
-        store=StubStore(data=HISTORIC_DOCS),
-        tokens=tokens,
+        store=StubStore(data=DOCS),
         limiter=limiter or RateLimiter(per_minute=1000, per_day=100000),
         latest_log=latest_log or RecordingLatestLog(),
-        historic_log=historic_log,
     )
 
 
@@ -130,22 +121,6 @@ class ProxyTrustTest(ForwardingTest):
         b1, _ = self.get(d, "/NO", headers=proxy | {"X-Forwarded-For": "198.51.100.2"})
         a2, _ = self.get(d, "/NO", headers=proxy | {"X-Forwarded-For": "198.51.100.1"})
         self.assertEqual((a1, b1, a2), (200, 200, 429))
-
-    def test_proxied_historic_logs_user_ip_and_auth_still_token_based(self):
-        # Historic auth is Bearer-token based and unaffected by the proxy;
-        # the enriched log line must carry the viewer IP, not the CF edge.
-        log = RecordingHistoricLog()
-        tokens = StubTokens(valid=(("tok-1234abcd", "t1"),))
-        d = deps(latest_log=log, historic_log=RecordingHistoricLog(),
-                 tokens=tokens)
-        d.historic_log = log
-        status, _ = self.get(d, "/2020-01-02/ASN/US", headers={
-            "Authorization": "Bearer tok-1234abcd",
-            "X-CC2ASN-Proxy": PROXY,
-            "X-Forwarded-For": "198.51.100.7",
-        })
-        self.assertEqual(status, 200)
-        self.assertEqual(log.lines[0].split()[2], "198.51.100.7")
 
 
 class ConfigProxyTest(unittest.TestCase):
