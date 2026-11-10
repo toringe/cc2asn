@@ -29,7 +29,7 @@ ifeq (deploy, $(filter deploy,$(MAKECMDGOALS)))
 	rm -rf build
 	mkdir -p build/site-packages
 	zip -r build/$(FUNCTION).zip $@.py
-	cp -R $(SITE)/ build/site-packages
+	cp -R $(SITE)/. build/site-packages
 	cd build/site-packages; zip -g -r ../$(FUNCTION).zip . -x "*__pycache__*"
 	aws lambda update-function-code \
 		--region=$(REGION) \
@@ -44,7 +44,7 @@ else
 	rm -rf build
 	mkdir -p build/site-packages
 	zip -r build/$(FUNCTION).zip $@.py 
-	cp -R $(SITE)/ build/site-packages
+	cp -R $(SITE)/. build/site-packages
 	cd build/site-packages; zip -g -r ../$(FUNCTION).zip . -x "*__pycache__*"
 endif
 
