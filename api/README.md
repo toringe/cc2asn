@@ -13,16 +13,39 @@ Endpoints (plain text by default, `?format=json` for structured output):
     GET /                      service banner
     GET /{CC}                  latest AS numbers (free, rate limited)
     GET /{TYPE}/{CC}           latest for TYPE in ASN|IPV4|IPV6|ALL
-    GET /{YYYY-MM-DD}/{CC}     historic, exact date, requires token (404 if no data)
-    GET /{YYYY-MM-DD}/{TYPE}/{CC}
 
-Tokens: `uv run python scripts/issue_token.py --name ACME --tier standard --quota 500 [--days 30]`.
-Tiers: `standard` (default) and `pro`. Only the SHA-256 hash is stored; the plaintext
-is printed once. Revoke with `--revoke ACME`.
+Latest day only. Date-prefixed paths (`/{YYYY-MM-DD}/...`) answer 404
+"Historic lookups are not available" — historic access (tokens, a paid Pro
+tier) was withdrawn 2026-11-10; the parked design and plan are in
+`docs/superpowers/specs/2026-11-09-pro-tier-design.md` and
+`docs/superpowers/plans/2026-11-10-pro-tier.md`, the removed token code in
+git history (`lib/tokens.py`, `scripts/issue_token.py` before that date).
+
+## Rate limits
+
+Per user/device (= client IP; IPv6 per /64), env-configurable:
+
+- **100 queries per UTC day** (`RATE_PER_DAY`), enforced across all warm
+  environments by one atomic DynamoDB counter per client per day
+  (`lib/ratelimit.py` `DailyLimit`), in the `cc2asn-tokens` table under
+  `rl#<YYYY-MM-DD>#<sha256(client)[:32]>`, with `expires_at` for TTL cleanup.
+  429 `Daily limit exceeded ...` + `Retry-After` = seconds to 00:00 UTC.
+- **30 queries per minute** (`RATE_PER_MINUTE`), in memory per warm
+  environment: 429 `Rate limit exceeded` + `Retry-After: 60`. Checked first,
+  so floods never reach DynamoDB.
+- DynamoDB failures **fail open** (logged warning); the in-memory day cap
+  (same 100) still bounds each environment. Once a client is refused, the
+  environment remembers it until the day ends and stops writing.
+- Every counted query (incl. 404 for an unknown CC) costs one DynamoDB write;
+  the table's provisioned write capacity (5 WCU by default; free tier allows
+  25) caps sustained throughput at roughly that many queries per second
+  before throttling (which fails open).
+- Bridge (TCP 43) and CloudFront traffic are limited per forwarded end-user
+  IP, via the same `_client_ip()` trust paths.
 
 ## Query logs (CloudWatch)
 
-Successful lookups are written per request to two dedicated log groups
+Successful lookups are written per request to a dedicated log group
 (`lib/querylog.py`), one **CloudWatch stream per day**, 180-day retention:
 
 - `/cc2asn/api/latest` — free latest-day lookups, legacy whois line format
@@ -30,10 +53,10 @@ Successful lookups are written per request to two dedicated log groups
   `2026-11-01 13:04:51 141.101.104.69 IPV4 US src=http|tcp43`
   (`src=tcp43` = whois bridge traffic; the IP is the end user's, forwarded
   behind the bridge secret — see below).
-- `/cc2asn/api/historic` — historic lookups, legacy prefix plus:
-  `date=(the requested day) status=(200) ms=(duration) src=(cache|s3) tier=(standard|pro) tok=(sha256 8-char prefix)`
+- `/cc2asn/api/historic` — no longer written (historic lookups withdrawn
+  2026-11-10); existing entries age out under the 180-day retention.
 
-Failures (401/404/429/500), banners and lifecycle events stay in the
+Failures (404/429/500), banners and lifecycle events stay in the
 function's own `/aws/lambda/CC2ASN-api` operational group.
 
 Tests: `uv run python -m unittest discover -s test -t .`
@@ -65,11 +88,17 @@ checks:
         --key-schema AttributeName=tk,KeyType=HASH \
         --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
         --region eu-west-1
+    aws dynamodb update-time-to-live --table-name cc2asn-tokens \
+        --time-to-live-specification Enabled=true,AttributeName=expires_at \
+        --region eu-west-1
+
+   (Name kept from the token era; it now holds the per-client daily
+   counters. TTL deletes each day's counters ~2 days later at no cost.)
 
 2. Execution role: `CC2ASN-api-role` with trust policy for
    `lambda.amazonaws.com`; inline policy granting `s3:GetObject` on
    `arn:aws:s3:::cc2asn-db` + `arn:aws:s3:::cc2asn-db/*`, read/write(+scan)
-   on the `cc2asn-tokens` table ARN, and CloudWatch Logs actions
+   (`dynamodb:UpdateItem` is what the daily limit needs) on the `cc2asn-tokens` table ARN, and CloudWatch Logs actions
    `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`
    (without them the function emits no logs at all). Easier alternative:
    attach the managed `AWSLambdaBasicExecutionRole` plus the inline S3/DDB
@@ -78,9 +107,7 @@ checks:
 2b. Query log groups (they are NOT auto-created by the app):
 
     aws logs create-log-group --log-group-name /cc2asn/api/latest --region eu-west-1
-    aws logs create-log-group --log-group-name /cc2asn/api/historic --region eu-west-1
     aws logs put-retention-policy --log-group-name /cc2asn/api/latest --retention-in-days 180
-    aws logs put-retention-policy --log-group-name /cc2asn/api/historic --retention-in-days 180
     aws logs put-retention-policy --log-group-name /aws/lambda/CC2ASN-api --retention-in-days 180
 
    (The runtime does self-heal a missing group once, inside the request,
@@ -144,10 +171,10 @@ checks:
    latest log records the VM IP with `src=http`. Watch `/cc2asn/api/latest`
    for `src=tcp43` after cutover — its absence is the tell.
 
-6. Smoke test (`FUNCTION_URL` from step 4): banner, `/NO`, historic
-   401 without token, historic 200 with token, malformed date 404.
-   Then issue a real token with `scripts/issue_token.py` and verify quota
-   via CloudWatch + DynamoDB usage.
+6. Smoke test (`FUNCTION_URL` from step 4): banner, `/NO`, a historic
+   path answers 404 "Historic lookups are not available", malformed path
+   404. Then verify the daily counter: a `rl#<today>#…` item in
+   `cc2asn-tokens` with `n` matching your query count.
 
 7. Custom domain (`api.cc2asn.com` — CloudFront in front of the Function URL):
 
@@ -193,8 +220,6 @@ checks:
       The `/cc2asn/api/latest` line must show **your IP** with
       `src=http` — an edge IP means `CC2ASN_PROXY_SECRET` is missing
       (limp: attribution + rate limiting collapse to proxy identity).
-      Historic lookups are token-authed and unchanged; only their log
-      line's ip field shares the (fixed) resolution path.
 
    Rollback is a DNS record deletion — the raw Function URL stays
    public throughout. Remove the distribution + cert with the alias.

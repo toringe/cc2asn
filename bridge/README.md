@@ -110,11 +110,21 @@ Conf/secret changes are manual: edit `/etc/cc2asn-bridge.conf` on the VM, then
 
 ## Neutral smoke (no DNS change needed)
 
-    whois -h <VM-IP> fi
+    echo fi | nc <VM-IP> 43               # query via nc — safest client form
+    whois -h <VM-IP> 'ipv4 dk'            # two-arg form works
     echo ipv4 dk | nc <VM-IP> 43
     tail /var/log/cc2asn/query.log       # on the VM: user ip, type, cc, status
     # on the AWS side, confirm the same lookup in /cc2asn/api/latest with
     # src=tcp43 and the same client IP.
+
+**macOS `/usr/bin/whois` caveat (verified 2026-11-04, both GCP VM and old
+rambase IP)**: `whois -h <IP> <single-arg>` segfaults in Apple's client
+itself — NULL deref in `strcasecmp` during arg parsing, BEFORE any bytes
+are sent (crash reports: `EXC_BAD_ACCESS` at 0x0; server receives nothing).
+Triggered by an IP-literal `-h` plus exactly one positional query arg;
+two-arg queries (`ipv4 dk`) and hostname `-h` are unaffected. Not a
+bridge/legacy-server defect. Workarounds: nc, two-arg form, or
+`brew install whois`. Post-cutover users always use the hostname form.
 
 ## DNS cutover (retires rambase)
 

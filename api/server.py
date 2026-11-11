@@ -3,36 +3,46 @@
 import json
 import hmac
 import logging
-import os
 import datetime
-import time
 from dataclasses import dataclass
-from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from lib.config import Config, load
-from lib.querylog import historic_line, legacy_line
-from lib.ratelimit import RateLimiter
+from lib.querylog import legacy_line
+from lib.ratelimit import DailyLimit, RateLimiter
 from lib.s3data import DataStore
-from lib.tokens import TokenStore
 from lib.whois import parse_query, render_json, render_plain
 
 logger = logging.getLogger("cc2asn.api")
 
 BANNER = (
-    "CC2ASN WEB API. Query: /{CC} or /{TYPE}/{CC}. "
-    "Historic: /{YYYY-MM-DD}/... (token required).\n"
+    "CC2ASN WEB API. Query: /{CC} or /{TYPE}/{CC} "
+    "(TYPE: ASN, IPV4, IPV6, ALL). Latest day only, free, max 100 queries per day.\n"
 )
+
+HISTORIC_GONE = (
+    "Historic lookups are not available. Query: /{CC} or /{TYPE}/{CC}\n"
+)
+
+
+def utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def seconds_until_utc_midnight(now: datetime.datetime) -> int:
+    tomorrow = datetime.datetime.combine(
+        now.date() + datetime.timedelta(days=1), datetime.time(), tzinfo=datetime.timezone.utc
+    )
+    return max(1, int((tomorrow - now).total_seconds()))
 
 
 @dataclass
 class Deps:
     config: Config
     store: DataStore
-    tokens: TokenStore
-    limiter: RateLimiter
-    latest_log: object | None = None   # QueryLog for free latest-day lookups
-    historic_log: object | None = None  # QueryLog for historic lookups
+    limiter: RateLimiter                # in-memory, per environment: bursts + fallback
+    daily: object | None = None         # DailyLimit: shared per-client daily cap
+    latest_log: object | None = None    # QueryLog for latest-day lookups
 
 
 def build_deps(config: Config) -> Deps:
@@ -45,10 +55,9 @@ def build_deps(config: Config) -> Deps:
     return Deps(
         config=config,
         store=store,
-        tokens=TokenStore(table),
         limiter=RateLimiter(per_minute=config.rate_per_minute, per_day=config.rate_per_day),
+        daily=DailyLimit(table, per_day=config.rate_per_day),
         latest_log=QueryLog(config.log_group_latest),
-        historic_log=QueryLog(config.log_group_historic),
     )
 
 
@@ -110,8 +119,7 @@ class WhoisHandler(BaseHTTPRequestHandler):
         # CloudFront-fronted requests carry the distribution's fixed origin
         # header as proof of the front door (set in distribution config, not
         # visible to clients). Its own header name — never Authorization —
-        # so it cannot collide with the historic Bearer-token auth that the
-        # viewer's Authorization header carries.
+        # so it cannot collide with the bridge's Bearer secret.
         secret = self.deps.config.proxy_secret
         if not secret:
             return False
@@ -164,8 +172,8 @@ class WhoisHandler(BaseHTTPRequestHandler):
             logger.warning("Query log write failed", exc_info=True)
 
     def _route_get(self):
-        start = time.monotonic()
-        today = date.today().isoformat()
+        now = utcnow()
+        today = now.date().isoformat()
         path = self.path
         if path.split("?", 1)[0] == "/":
             self._send(200, BANNER, "text/plain; charset=utf-8")
@@ -175,85 +183,62 @@ class WhoisHandler(BaseHTTPRequestHandler):
         if query is None:
             self._send(404, f"Not found: {path}\n", "text/plain; charset=utf-8")
             return
+        if query.date is not None:
+            # Historic lookups were withdrawn (2026-11-10); the parser still
+            # recognises the form so callers get a clear answer, not "Not found".
+            self._send(404, HISTORIC_GONE, "text/plain; charset=utf-8")
+            return
 
         want_json = "format=json" in self.path.split("?", 1)[-1] if "?" in self.path else False
-        data_date = query.date or "latest"
 
-        body = None
-        if query.date is None:
-            if not self.deps.limiter.allow(self._client_ip(), today):
+        ip = self._client_ip()
+        limiter = self.deps.limiter
+        daily = self.deps.daily
+        if not limiter.allow(ip, today):
+            if limiter.daily_exhausted(ip, today):
+                self._send_daily_limited(now)
+            else:
                 self._send(
                     429,
                     "Rate limit exceeded\n",
                     "text/plain; charset=utf-8",
                     {"Retry-After": "60"},
                 )
-                return
-            body = self.deps.store.get_latest(query.rectype, query.cc)
-            if body is None:
-                self._send(404, f"Not found: {path}\n", "text/plain; charset=utf-8")
-                return
-            source = self.deps.store.last_source or "s3"
-        else:
-            token = self._bearer_token()
-            item = self.deps.tokens.authorize(token, today) if token else None
-            if item is None:
-                self._send(
-                    401,
-                    "Unauthorized\n",
-                    "text/plain; charset=utf-8",
-                    {"WWW-Authenticate": "Bearer"},
-                )
-                return
-            if not self.deps.tokens.consume(token, today):
-                self._send(429, "Token quota exhausted\n", "text/plain; charset=utf-8")
-                return
-            body = self.deps.store.get_historic(query.date, query.rectype, query.cc)
-            if body is None:
-                self._send(404, f"Not found: {path}\n", "text/plain; charset=utf-8")
-                return
-            source = "s3"
-            tier = item.get("tier", "standard")
-            tok_prefix = item.get("tk", "")[:8]
+            return
+        if daily is not None and not daily.allow(ip, today):
+            self._send_daily_limited(now)
+            return
 
-        now = datetime.datetime.now(datetime.timezone.utc)
-        ms = int((time.monotonic() - start) * 1000)
-        stream_date = now.strftime("%Y/%m/%d")
+        body = self.deps.store.get_latest(query.rectype, query.cc)
+        if body is None:
+            self._send(404, f"Not found: {path}\n", "text/plain; charset=utf-8")
+            return
+
         # The query log write MUST happen before the response is sent:
         # PutLogEvents calls placed after _send() were observed to never
         # complete in this runtime/adapter setup (see plan ledger).
         # It is best-effort: failures never break the response.
-        if query.date is None:
-            self._log_query(
-                self.deps.latest_log,
-                legacy_line(now, self._client_ip(), query.rectype, query.cc,
-                            src="tcp43" if self._is_bridge() else "http"),
-                stream_date,
-            )
-        else:
-            self._log_query(
-                self.deps.historic_log,
-                historic_line(
-                    now, self._client_ip(), query.rectype, query.cc,
-                    date=query.date, ms=ms, source=source, tier=tier, tok_prefix=tok_prefix,
-                ),
-                stream_date,
-            )
+        self._log_query(
+            self.deps.latest_log,
+            legacy_line(now, ip, query.rectype, query.cc,
+                        src="tcp43" if self._is_bridge() else "http"),
+            now.strftime("%Y/%m/%d"),
+        )
 
-        headers = {"X-Data-Date": data_date}
+        headers = {"X-Data-Date": "latest"}
         if want_json:
-            self._send(200, render_json(query, data_date, body), "application/json", headers)
+            self._send(200, render_json(query, "latest", body), "application/json", headers)
         else:
             self._send(200, render_plain(body), "text/plain; charset=utf-8", headers)
 
-    def _bearer_token(self) -> str | None:
-        header = self.headers.get("Authorization")
-        if not header:
-            return None
-        parts = header.split(" ")
-        if len(parts) != 2 or parts[0].lower() != "bearer":
-            return None
-        return parts[1]
+    def _send_daily_limited(self, now: datetime.datetime) -> None:
+        self._send(
+            429,
+            f"Daily limit exceeded ({self.deps.config.rate_per_day} queries per day). "
+            "Resets at 00:00 UTC.\n",
+            "text/plain; charset=utf-8",
+            {"Retry-After": str(seconds_until_utc_midnight(now))},
+        )
 
     def do_HEAD(self):
         self._send(405, "Method not allowed\n", "text/plain; charset=utf-8")

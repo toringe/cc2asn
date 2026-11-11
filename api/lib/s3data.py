@@ -1,18 +1,12 @@
-"""Reads per-country data files from S3 with a TTL cache for the latest/ set."""
+"""Reads latest/ per-country data files from S3 with a TTL cache."""
 
 import time
-from datetime import date as _date  # noqa: F401  (kept for typing clarity)
 
 from lib.whois import Query  # noqa: F401  (typing of callers)
 
 
 def latest_key(rectype: str, cc: str) -> str:
     return f"latest/{cc}_{rectype}"
-
-
-def historic_key(date: str, rectype: str, cc: str) -> str:
-    y, m, d = date.split("-")
-    return f"{y}/{int(m):02d}/{int(d):02d}/{cc}_{rectype}"
 
 
 class DataStore:
@@ -61,6 +55,3 @@ class DataStore:
         if body is not None:
             self._cache[key] = (self._now(), body)
         return body
-
-    def get_historic(self, date: str, rectype: str, cc: str) -> str | None:
-        return self._fetch(historic_key(date, rectype, cc))
