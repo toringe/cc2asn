@@ -38,8 +38,11 @@ ephemeral ports, in-process `http.server` acting as the API).
 Requires the `gcloud` CLI, a fresh project, and the free-tier region
 **us-east1** (us-central1/us-west1 also covered; EU regions are NOT free).
 
-    gcloud projects create cc2asn-bridge
-    gcloud config set project cc2asn-bridge
+    # Project IDs are globally unique: the live project is named "CC2ASN"
+    # but its ID is project-64a38f38-315b-4bd8-92b (cc2asn-bridge is the
+    # VM's name, not the project). For a fresh project, pick an unused ID.
+    gcloud projects create <project-id> --name=CC2ASN
+    gcloud config set project <project-id>
     gcloud services enable compute.googleapis.com
 
     # Static external IP: free while attached to a RUNNING instance.
@@ -68,6 +71,15 @@ Requires the `gcloud` CLI, a fresh project, and the free-tier region
         --direction=INGRESS --action=allow --rules=tcp:22 \
         --source-ranges=35.235.240.0/20
     gcloud compute firewall-rules delete default-allow-ssh
+
+    # The default network also opens RDP (tcp:3389) to the world — unused on
+    # Debian, deleted 2026-11-14.
+    gcloud compute firewall-rules delete default-allow-rdp
+
+    # 80/443 for the apex web redirect (Caddy, see "Apex web redirect" below);
+    # must stay open, or ACME certificate renewal fails.
+    gcloud compute firewall-rules create allow-http-redirect \
+        --allow=tcp:80,tcp:443 --source-ranges=0.0.0.0/0
 
 Free-tier guardrails: region in {us-east1, us-central1, us-west1}, e2-micro,
 boot disk <= 30 GiB (10 GB here), connected static IP, egress < 1 GiB/month
@@ -100,13 +112,45 @@ with an external IP present, gcloud tries the public IP first without it.
     gcloud compute scp --tunnel-through-iap --zone us-east1-b cc2asn-bridge.service cc2asn-bridge:/tmp
     gcloud compute ssh --tunnel-through-iap --zone us-east1-b cc2asn-bridge --command "\sh -c 'sudo install -m 644 /tmp/cc2asn-bridge.service /etc/systemd/system/cc2asn-bridge.service && sudo systemctl daemon-reload && sudo systemctl enable --now cc2asn-bridge'"
 
-## Deploy updates (from the repo, after `gcloud config set project cc2asn-bridge`)
+## Deploy updates (from the repo, after `gcloud config set project project-64a38f38-315b-4bd8-92b`)
 
     cd bridge && make deploy       # test -> scp server.py+lib/api.py -> restart
     make restart                   # restart only
 
 Conf/secret changes are manual: edit `/etc/cc2asn-bridge.conf` on the VM, then
 `make restart`.
+
+## Apex web redirect (Caddy, set up 2026-11-14)
+
+The apex `cc2asn.com` A record must point at this VM (grey cloud) for TCP 43,
+so a browser typing `cc2asn.com` lands here too. Caddy on the VM answers
+80/443 with a redirect to the website (`www.cc2asn.com`, a Cloudflare Worker)
+and manages the Let's Encrypt certificate itself (HTTP-01/TLS-ALPN-01, which
+is why `allow-http-redirect` must stay open).
+
+    # on the VM (Caddy from its official apt repo), replace the whole
+    # default Caddyfile (its ":80 { file_server }" welcome page is not wanted):
+    sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
+    {
+        email <contact-email>
+    }
+
+    cc2asn.com {
+        redir https://www.cc2asn.com{uri} permanent
+    }
+    EOF
+    sudo caddy validate --config /etc/caddy/Caddyfile
+    sudo systemctl reload caddy
+    sudo journalctl -u caddy -n 20 --no-pager | grep -i certificate
+
+The global `email` avoids the ZeroSSL fallback error (`caddy_legacy_user_removed`)
+and receives Let's Encrypt expiry notices. Renewal is automatic (~every 60 days).
+
+Verify (from anywhere):
+
+    curl -sI http://cc2asn.com  | grep -iE '^HTTP|^location'   # 308 -> https://cc2asn.com/
+    curl -sI https://cc2asn.com | grep -iE '^HTTP|^location'   # 301 -> https://www.cc2asn.com/
+    echo fi | nc cc2asn.com 43 | head -3                        # whois unaffected
 
 ## Neutral smoke (no DNS change needed)
 
@@ -126,12 +170,18 @@ two-arg queries (`ipv4 dk`) and hostname `-h` are unaffected. Not a
 bridge/legacy-server defect. Workarounds: nc, two-arg form, or
 `brew install whois`. Post-cutover users always use the hostname form.
 
-## DNS cutover (retires rambase)
+## DNS cutover (retires rambase) — DONE
+
+Status (verified 2026-11-14): the `cc2asn.com` A record points at
+`35.196.91.34` (grey cloud). Rambase (`81.4.121.45`) stays running as the
+rollback target until it is cancelled in October 2027; rollback = flip the A
+record back. Steps as performed:
+
 
 1. Lower the `cc2asn.com` whois A-record TTL to 300 well before the move.
 2. Point the A record at the GCP address (`gcloud compute addresses` output).
 3. Keep the rambase server serving until the old TTL fully expires.
-4. Cancel the rambase VPS. If a rollback port is ever needed, the VM
+4. Cancel the rambase VPS (scheduled October 2027). If a rollback port is ever needed, the VM
    re-creates from this README in ~15 minutes and the repo holds the code.
 
 ## Secret rotation
@@ -165,7 +215,10 @@ Both sides log greppable per-line data for the decay check:
 Check monthly: bridged lookups vs direct API lookups. When the whois fraction
 is negligible, retire the bridge: remove the DNS record, delete the VM (and
 release the static IP — free only while attached to a running instance).
-GitHub/history in this repo is the re-creation path.
+GitHub/history in this repo is the re-creation path. Deleting the VM also
+removes the apex web redirect: replace it by proxying the apex (orange cloud,
+possible once TCP 43 is no longer needed) with a Cloudflare redirect rule
+`cc2asn.com/*` → `https://www.cc2asn.com/${1}` (301).
 
 Monthly check, concretely (30-day window):
 
